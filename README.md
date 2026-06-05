@@ -382,6 +382,69 @@ Após isso, o agente começará a reportar os NodePort services do K8s no painel
 
 ---
 
+## Monitoramento K8s (etapa 6)
+
+Stack instalado via Helm no namespace `homelab`:
+
+| Ferramenta | Função |
+|------------|--------|
+| **Prometheus** | Coleta e armazena métricas do cluster e pods |
+| **Grafana** | Dashboards — exposto na porta `30300` |
+| **Loki** | Armazena logs dos pods |
+| **Promtail** | Coleta logs de todos os pods e envia ao Loki |
+
+### Pré-requisitos
+
+- k3s instalado (etapa 5 concluída)
+- Helm instalado (o script da etapa 5 já instala)
+
+### Instalar
+
+```bash
+# Antes de rodar: edite a senha do Grafana
+nano ~/wol-rpi-k8s/k8s/monitoring/prometheus-values.yml
+# Altere o campo: adminPassword
+
+chmod +x ~/wol-rpi-k8s/k8s/monitoring/setup-monitoring.sh
+~/wol-rpi-k8s/k8s/monitoring/setup-monitoring.sh
+```
+
+> A instalação pode levar 3–5 minutos — os containers precisam ser baixados.
+
+### Acessar o Grafana
+
+```
+http://<ip-do-pc>:30300
+Usuário: admin
+Senha: definida em prometheus-values.yml
+```
+
+Os datasources **Prometheus** e **Loki** já estão pré-configurados.
+
+### Verificar pods
+
+```bash
+kubectl get pods -n homelab
+```
+
+Todos devem estar `Running`. Se algum ficar em `Pending`, verifique espaço em disco:
+
+```bash
+kubectl describe pod -n homelab <nome-do-pod>
+```
+
+### Dashboards recomendados para importar no Grafana
+
+| Dashboard | ID | Conteúdo |
+|-----------|----|----------|
+| Kubernetes cluster | `315` | CPU, memória, rede por node |
+| Node Exporter Full | `1860` | Métricas detalhadas do host Linux |
+| Loki logs | `13639` | Explorador de logs |
+
+Importar: Grafana → Dashboards → Import → colar o ID.
+
+---
+
 ## Pontos de atenção
 
 - **IP do Pi Zero:** Fixar via reserva DHCP no roteador (MAC: `b8:27:eb:c1:50:af`) antes de subir o agente no PC

@@ -1,0 +1,30 @@
+# kube-prometheus-stack — valores para homelab single-node
+# Docs: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
+
+grafana:
+  service:
+    type: NodePort
+    nodePort: 30300
+  # Troque a senha antes de instalar
+  adminPassword: "troque-esta-senha"
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      url: http://loki.homelab.svc.cluster.local:3100
+      access: proxy
+      isDefault: false
+
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+# AlertManager desabilitado — simplifica o setup de estudo
+alertmanager:
+  enabled: false

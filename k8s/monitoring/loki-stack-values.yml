@@ -1,0 +1,16 @@
+# loki-stack — Loki + Promtail para homelab
+# Grafana desabilitado: usamos o do kube-prometheus-stack
+# Docs: https://github.com/grafana/helm-charts/tree/main/charts/loki-stack
+
+loki:
+  persistence:
+    enabled: true
+    size: 5Gi
+  config:
+    auth_enabled: false
+
+promtail:
+  enabled: true
+
+grafana:
+  enabled: false
