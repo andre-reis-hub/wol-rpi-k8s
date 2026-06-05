@@ -47,15 +47,16 @@ def get_k8s_services():
         for item in data.get('items', []):
             if item['spec'].get('type') != 'NodePort':
                 continue
-            name = item['metadata']['name']
-            namespace = item['metadata']['namespace']
+            labels = item['metadata'].get('labels', {})
+            nome = (
+                labels.get('app.kubernetes.io/name') or
+                labels.get('app') or
+                item['metadata']['name']
+            ).capitalize()
             for port in item['spec'].get('ports', []):
                 node_port = port.get('nodePort')
                 if node_port:
-                    services.append({
-                        'nome': f'{namespace}/{name}',
-                        'porta': node_port,
-                    })
+                    services.append({'nome': nome, 'porta': node_port})
         return services
     except FileNotFoundError:
         log.info('kubectl não encontrado — K8s ainda não configurado')

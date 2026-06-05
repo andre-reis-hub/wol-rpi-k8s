@@ -1,19 +1,49 @@
 {% if online %}
+
 <p><strong class="status-online">● Online</strong></p>
+
 {% if state.services %}
-<p><small>IP público: {{ state.ip }}</small></p>
+<p><small>IP público: <strong>{{ state.ip }}</strong></small></p>
 <table>
-    <thead><tr><th>Serviço</th><th>Acesso</th></tr></thead>
+    <thead>
+        <tr><th>Serviço</th><th>Acesso</th></tr>
+    </thead>
     <tbody>
     {% for svc in state.services %}
     <tr>
         <td>{{ svc.nome }}</td>
-        <td><a href="http://{{ state.ip }}:{{ svc.porta }}" target="_blank">{{ state.ip }}:{{ svc.porta }}</a></td>
+        <td>
+            <a href="http://{{ state.ip }}:{{ svc.porta }}" target="_blank" rel="noopener">
+                {{ state.ip }}:{{ svc.porta }}
+            </a>
+        </td>
     </tr>
     {% endfor %}
     </tbody>
 </table>
-{% endif %}
 {% else %}
+<p><small>Aguardando agente registrar serviços...</small></p>
+{% endif %}
+
+{% if state.last_seen %}
+<p><small style="color: var(--pico-muted-color);">
+    Agente: {{ state.last_seen[:19] | replace('T', ' ') }} UTC
+</small></p>
+{% endif %}
+
+{% elif waking %}
+
+<p><strong class="status-waking">⏳ Ligando...</strong></p>
+<p><small>Pacote WoL enviado. O PC pode levar 1–3 min para inicializar.</small></p>
+
+{% else %}
+
 <p><strong class="status-offline">● Offline</strong></p>
+<form hx-post="/wol"
+      hx-target="#status-box"
+      hx-swap="innerHTML"
+      style="margin-top: 0.75rem;">
+    <button type="submit">⚡ Ligar PC</button>
+</form>
+
 {% endif %}

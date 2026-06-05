@@ -19,6 +19,8 @@ PC_MAC = os.environ['PC_MAC']
 PC_LOCAL_IP = os.environ['PC_LOCAL_IP']
 REGISTER_TOKEN = os.environ.get('REGISTER_TOKEN', '')
 
+WAKING_TIMEOUT = 300  # segundos antes de desistir do estado "ligando"
+
 STATE_FILE = os.path.join(os.path.dirname(__file__), 'state.json')
 
 
@@ -26,12 +28,19 @@ def load_state():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE) as f:
             return json.load(f)
-    return {'ip': None, 'services': [], 'last_seen': None}
+    return {'ip': None, 'services': [], 'last_seen': None, 'waking': False, 'waking_since': None}
 
 
 def save_state(state):
     with open(STATE_FILE, 'w') as f:
         json.dump(state, f)
+
+
+def is_waking(state):
+    if not state.get('waking') or not state.get('waking_since'):
+        return False
+    elapsed = (datetime.utcnow() - datetime.fromisoformat(state['waking_since'])).total_seconds()
+    return elapsed < WAKING_TIMEOUT
 
 
 def pc_online():
@@ -78,14 +87,19 @@ def dashboard():
 def status_fragment():
     online = pc_online()
     state = load_state()
-    return render_template('_status.html', online=online, state=state)
+    waking = not online and is_waking(state)
+    return render_template('_status.html', online=online, waking=waking, state=state)
 
 
 @app.route('/wol', methods=['POST'])
 @login_required
 def wol():
     wakeonlan.send_magic_packet(PC_MAC)
-    return '<span class="wol-sent">Pacote WoL enviado. Aguardando PC ligar...</span>'
+    state = load_state()
+    state['waking'] = True
+    state['waking_since'] = datetime.utcnow().isoformat()
+    save_state(state)
+    return ''
 
 
 @app.route('/api/register', methods=['POST'])
@@ -99,6 +113,8 @@ def register():
         'ip': data.get('ip'),
         'services': data.get('services', []),
         'last_seen': datetime.utcnow().isoformat(),
+        'waking': False,
+        'waking_since': None,
     }
     save_state(state)
     return {'ok': True}
