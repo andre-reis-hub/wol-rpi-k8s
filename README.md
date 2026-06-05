@@ -272,6 +272,71 @@ cloudflared tunnel --url http://localhost:5000
 
 ---
 
+## Agente no PC Linux (etapa 4)
+
+Script Python que roda no boot do PC, descobre o IP público, lista os serviços K8s ativos e registra tudo no painel do Pi Zero. Atualiza a cada 60s enquanto o PC está ligado.
+
+### 1. Clonar o repositório no PC (se ainda não fez)
+
+```bash
+git clone https://github.com/<seu-usuario>/wol-rpi-k8s.git
+cd wol-rpi-k8s/agent
+```
+
+### 2. Criar ambiente virtual e instalar dependências
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 3. Configurar variáveis de ambiente
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+| Variável | Descrição |
+|----------|-----------|
+| `PANEL_URL` | URL local do Pi Zero (ex: `http://192.168.15.9:5000`) |
+| `REGISTER_TOKEN` | Mesmo token configurado no `.env` do site |
+| `INTERVAL` | Intervalo de atualização em segundos (padrão: `60`) |
+
+### 4. Testar manualmente
+
+```bash
+source venv/bin/activate
+python agent.py
+```
+
+Verifique no painel do Pi se o IP público aparece no dashboard.
+
+### 5. Rodar como serviço (systemd)
+
+```bash
+# Substitua <seu-usuario-linux> pelo seu usuário real
+sudo cp ~/wol-rpi-k8s/agent/wol-agent.service.example \
+        /etc/systemd/system/wol-agent.service
+
+sudo nano /etc/systemd/system/wol-agent.service
+# Substitua os placeholders <seu-usuario-linux>
+
+sudo systemctl daemon-reload
+sudo systemctl enable wol-agent
+sudo systemctl start wol-agent
+sudo systemctl status wol-agent
+```
+
+### 6. Verificar logs
+
+```bash
+sudo journalctl -u wol-agent -f
+```
+
+---
+
 ## Pontos de atenção
 
 - **IP do Pi Zero:** Fixar via reserva DHCP no roteador (MAC: `b8:27:eb:c1:50:af`) antes de subir o agente no PC
