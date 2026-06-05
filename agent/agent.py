@@ -14,6 +14,7 @@ load_dotenv()
 PANEL_URL = os.environ['PANEL_URL']
 REGISTER_TOKEN = os.environ['REGISTER_TOKEN']
 INTERVAL = int(os.environ.get('INTERVAL', '60'))
+KUBECONFIG = os.environ.get('KUBECONFIG', os.path.expanduser('~/.kube/config'))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,9 +35,10 @@ def get_public_ip():
 
 def get_k8s_services():
     try:
+        env = {**os.environ, 'KUBECONFIG': KUBECONFIG}
         result = subprocess.run(
             ['kubectl', 'get', 'services', '-A', '-o', 'json'],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, env=env,
         )
         if result.returncode != 0:
             return []

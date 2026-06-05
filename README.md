@@ -337,6 +337,51 @@ sudo journalctl -u wol-agent -f
 
 ---
 
+## k3s no PC Linux (etapa 5)
+
+k3s é uma distribuição K8s certificada pela CNCF, em binário único, ideal para homelab e estudo.
+
+### Setup automatizado
+
+```bash
+cd ~/wol-rpi-k8s/k8s
+chmod +x setup-k3s.sh
+./setup-k3s.sh
+```
+
+O script faz:
+1. Instala k3s
+2. Aguarda o cluster ficar pronto
+3. Copia o kubeconfig para `~/.kube/config`
+4. Instala o Helm (necessário para o step 6)
+5. Cria o namespace `homelab`
+
+### Verificar o cluster
+
+```bash
+kubectl get nodes
+kubectl get pods -A
+```
+
+### Atualizar o agente para usar o kubeconfig
+
+No `.env` do agente (`~/wol-rpi-k8s/agent/.env`), ajuste a variável:
+
+```bash
+KUBECONFIG=/home/<seu-usuario-linux>/.kube/config
+```
+
+Reinicie o serviço:
+
+```bash
+sudo systemctl restart wol-agent
+sudo journalctl -u wol-agent -f
+```
+
+Após isso, o agente começará a reportar os NodePort services do K8s no painel.
+
+---
+
 ## Pontos de atenção
 
 - **IP do Pi Zero:** Fixar via reserva DHCP no roteador (MAC: `b8:27:eb:c1:50:af`) antes de subir o agente no PC
