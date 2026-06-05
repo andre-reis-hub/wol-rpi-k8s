@@ -97,6 +97,103 @@ K8s no PC [k3s]
 | K8s no PC | k3s | Mais leve que K8s full, ideal para estudo |
 | Estratégia de commits | Direto na main, um commit por funcionalidade | Histórico linear e legível |
 
+## Instalação no Raspberry Pi Zero W
+
+Acesse o Pi via SSH e execute os passos abaixo.
+
+### 1. Pré-requisitos
+
+```bash
+sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
+```
+
+### 2. Clonar o repositório
+
+```bash
+git clone https://github.com/<seu-usuario>/wol-rpi-k8s.git
+cd wol-rpi-k8s/site
+```
+
+### 3. Criar ambiente virtual e instalar dependências
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+> O Pi Zero W é lento na instalação — pode levar alguns minutos.
+
+### 4. Configurar variáveis de ambiente
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Preencha os valores:
+
+| Variável | Descrição |
+|----------|-----------|
+| `SECRET_KEY` | String aleatória longa (ex: `python3 -c "import secrets; print(secrets.token_hex(32))"`) |
+| `USERNAME` | Usuário do login |
+| `PASSWORD` | Senha do login |
+| `PC_MAC` | MAC address do PC (ex: `AA:BB:CC:DD:EE:FF`) |
+| `PC_LOCAL_IP` | IP local do PC na rede (ex: `192.168.15.10`) |
+
+### 5. Testar manualmente
+
+```bash
+source venv/bin/activate
+python app.py
+```
+
+Acesse `http://<ip-do-pi>:5000` na rede local para verificar se o site funciona.
+
+### 6. Rodar como serviço (systemd)
+
+Criar o arquivo de serviço:
+
+```bash
+sudo nano /etc/systemd/system/wol-panel.service
+```
+
+Conteúdo:
+
+```ini
+[Unit]
+Description=WoL Panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/wol-rpi-k8s/site
+ExecStart=/home/pi/wol-rpi-k8s/site/venv/bin/python app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Ativar e iniciar:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable wol-panel
+sudo systemctl start wol-panel
+sudo systemctl status wol-panel
+```
+
+### 7. Verificar logs
+
+```bash
+sudo journalctl -u wol-panel -f
+```
+
+---
+
 ## Pontos de atenção
 
 - **IP do Pi Zero:** Fixar via reserva DHCP no roteador (MAC: `b8:27:eb:c1:50:af`) antes de subir o agente no PC

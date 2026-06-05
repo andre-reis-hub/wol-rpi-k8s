@@ -1,0 +1,19 @@
+{% if online %}
+<p><strong class="status-online">● Online</strong></p>
+{% if state.services %}
+<p><small>IP público: {{ state.ip }}</small></p>
+<table>
+    <thead><tr><th>Serviço</th><th>Acesso</th></tr></thead>
+    <tbody>
+    {% for svc in state.services %}
+    <tr>
+        <td>{{ svc.nome }}</td>
+        <td><a href="http://{{ state.ip }}:{{ svc.porta }}" target="_blank">{{ state.ip }}:{{ svc.porta }}</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% else %}
+<p><strong class="status-offline">● Offline</strong></p>
+{% endif %}

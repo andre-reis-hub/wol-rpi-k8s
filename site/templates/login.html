@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block content %}
+<article style="max-width: 380px; margin: 4rem auto;">
+    <hgroup>
+        <h2>Login</h2>
+        <p>Acesso restrito</p>
+    </hgroup>
+    {% if error %}
+    <p><small style="color: #e74c3c;">{{ error }}</small></p>
+    {% endif %}
+    <form method="POST">
+        <label>
+            Usuário
+            <input type="text" name="username" required autofocus autocomplete="username">
+        </label>
+        <label>
+            Senha
+            <input type="password" name="password" required autocomplete="current-password">
+        </label>
+        <button type="submit">Entrar</button>
+    </form>
+</article>
+{% endblock %}

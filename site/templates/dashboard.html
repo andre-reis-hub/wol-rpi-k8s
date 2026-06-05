@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block content %}
+<hgroup>
+    <h2>Painel de Controle</h2>
+</hgroup>
+
+<div class="grid">
+    <article>
+        <header><strong>Status do PC</strong></header>
+        <div id="status-box"
+             hx-get="/status-fragment"
+             hx-trigger="load, every 5s"
+             hx-swap="innerHTML">
+            <p aria-busy="true">Verificando...</p>
+        </div>
+    </article>
+
+    <article>
+        <header><strong>Controle</strong></header>
+        <form hx-post="/wol"
+              hx-target="#wol-msg"
+              hx-swap="innerHTML">
+            <button type="submit">⚡ Ligar PC</button>
+        </form>
+        <p id="wol-msg"></p>
+    </article>
+</div>
+{% endblock %}

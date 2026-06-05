@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WoL Panel</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
+    <style>
+        .status-online { color: #2dc653; }
+        .status-offline { color: #6c757d; }
+        .wol-sent { color: #f0a500; }
+    </style>
+</head>
+<body>
+    <main class="container">
+        <nav>
+            <ul><li><strong>WoL Panel</strong></li></ul>
+            {% if session.get('user') %}
+            <ul><li><a href="/logout" role="button" class="outline secondary">Sair</a></li></ul>
+            {% endif %}
+        </nav>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
