@@ -17,6 +17,7 @@ USERNAME = os.environ['USERNAME']
 PASSWORD = os.environ['PASSWORD']
 PC_MAC = os.environ['PC_MAC']
 PC_LOCAL_IP = os.environ['PC_LOCAL_IP']
+REGISTER_TOKEN = os.environ.get('REGISTER_TOKEN', '')
 
 STATE_FILE = os.path.join(os.path.dirname(__file__), 'state.json')
 
@@ -89,6 +90,10 @@ def wol():
 
 @app.route('/api/register', methods=['POST'])
 def register():
+    if REGISTER_TOKEN:
+        auth = request.headers.get('Authorization', '')
+        if auth != f'Bearer {REGISTER_TOKEN}':
+            return {'error': 'unauthorized'}, 401
     data = request.get_json(silent=True) or {}
     state = {
         'ip': data.get('ip'),

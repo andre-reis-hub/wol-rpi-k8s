@@ -1,0 +1,10 @@
+# Substitua <TUNNEL-UUID> pelo UUID gerado em: cloudflared tunnel create wol-panel
+# Substitua <SEU-DOMINIO> pelo domínio configurado na Cloudflare
+
+tunnel: <TUNNEL-UUID>
+credentials-file: /home/pi/.cloudflared/<TUNNEL-UUID>.json
+
+ingress:
+  - hostname: panel.<SEU-DOMINIO>
+    service: http://localhost:5000
+  - service: http_status:404

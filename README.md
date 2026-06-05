@@ -140,6 +140,7 @@ Preencha os valores:
 | `PASSWORD` | Senha do login |
 | `PC_MAC` | MAC address do PC (ex: `AA:BB:CC:DD:EE:FF`) |
 | `PC_LOCAL_IP` | IP local do PC na rede (ex: `192.168.15.10`) |
+| `REGISTER_TOKEN` | Token secreto compartilhado com o agente do PC (ex: `python3 -c "import secrets; print(secrets.token_hex(32))"`) |
 
 ### 5. Testar manualmente
 
@@ -190,6 +191,83 @@ sudo systemctl status wol-panel
 
 ```bash
 sudo journalctl -u wol-panel -f
+```
+
+---
+
+## Cloudflare Tunnel (acesso remoto seguro)
+
+O Cloudflare Tunnel expõe o painel à internet sem abrir portas no roteador. O HTTPS é automático.
+
+> **Pré-requisito:** um domínio próprio adicionado ao Cloudflare (plano gratuito). Domínios `.com` custam ~$10/ano diretamente na Cloudflare. Para testar sem domínio, veja a opção Quick Tunnel no final.
+
+### 1. Instalar o cloudflared no Pi Zero
+
+```bash
+# Baixa o binário ARM (compatível com ARMv6)
+wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm -O cloudflared
+chmod +x cloudflared
+sudo mv cloudflared /usr/local/bin/
+cloudflared --version
+```
+
+### 2. Autenticar na conta Cloudflare
+
+```bash
+cloudflared tunnel login
+```
+
+Abrirá um link no terminal — acesse no navegador e autorize o domínio desejado.
+
+### 3. Criar o tunnel
+
+```bash
+cloudflared tunnel create wol-panel
+```
+
+Anote o UUID gerado (ex: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
+
+### 4. Configurar o tunnel
+
+```bash
+cp ~/wol-rpi-k8s/cloudflared/config.yml.example ~/.cloudflared/config.yml
+nano ~/.cloudflared/config.yml
+```
+
+Substitua `<TUNNEL-UUID>` e `<SEU-DOMINIO>` pelos valores reais.
+
+### 5. Criar o registro DNS
+
+```bash
+cloudflared tunnel route dns wol-panel panel.<SEU-DOMINIO>
+```
+
+### 6. Testar
+
+```bash
+cloudflared tunnel run wol-panel
+```
+
+Acesse `https://panel.<SEU-DOMINIO>` e verifique se o painel abre.
+
+### 7. Rodar como serviço (systemd)
+
+```bash
+sudo cp ~/wol-rpi-k8s/cloudflared/wol-tunnel.service.example \
+        /etc/systemd/system/wol-tunnel.service
+
+sudo systemctl daemon-reload
+sudo systemctl enable wol-tunnel
+sudo systemctl start wol-tunnel
+sudo systemctl status wol-tunnel
+```
+
+### Quick Tunnel (teste sem domínio)
+
+Para testar rapidamente sem domínio, use o tunnel temporário — a URL muda a cada reinício:
+
+```bash
+cloudflared tunnel --url http://localhost:5000
 ```
 
 ---
