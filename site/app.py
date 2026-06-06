@@ -1,12 +1,13 @@
 import json
 import os
+import re
 import subprocess
 from datetime import datetime
 from functools import wraps
 
 import wakeonlan
 from dotenv import load_dotenv
-from flask import Flask, redirect, render_template, request, session, url_for
+from flask import Flask, redirect, render_template, request, session, url_for, jsonify
 
 load_dotenv()
 
@@ -51,6 +52,21 @@ def pc_online():
     return result.returncode == 0
 
 
+def get_tunnel_url():
+    """Lê a URL do Cloudflare Tunnel a partir do journal do serviço wol-tunnel."""
+    try:
+        result = subprocess.run(
+            ['journalctl', '-u', 'wol-tunnel', '--no-pager', '-o', 'cat'],
+            capture_output=True, text=True, timeout=5
+        )
+        match = re.search(r'https://[a-z0-9-]+\.trycloudflare\.com', result.stdout)
+        if match:
+            return match.group(0)
+    except Exception:
+        pass
+    return None
+
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -79,7 +95,8 @@ def logout():
 @app.route('/')
 @login_required
 def dashboard():
-    return render_template('dashboard.html')
+    tunnel_url = get_tunnel_url()
+    return render_template('dashboard.html', tunnel_url=tunnel_url)
 
 
 @app.route('/status-fragment')

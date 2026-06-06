@@ -13,4 +13,35 @@
         <p aria-busy="true">Verificando...</p>
     </div>
 </article>
+
+<article>
+    <header><strong>🌐 Acesso Externo</strong></header>
+    {% if tunnel_url %}
+    <p>
+        <a href="{{ tunnel_url }}" target="_blank" rel="noopener" id="tunnel-link">
+            {{ tunnel_url }}
+        </a>
+    </p>
+    <button class="outline" onclick="copyTunnel()">📋 Copiar URL</button>
+    <span id="copy-feedback" style="margin-left: 0.5rem; color: #2dc653; display: none;">✓ Copiado!</span>
+    {% else %}
+    <p><small style="color: var(--pico-muted-color);">
+        Tunnel não encontrado. Verifique se o serviço <code>wol-tunnel</code> está ativo.
+    </small></p>
+    <p><small>
+        <code>sudo systemctl status wol-tunnel</code>
+    </small></p>
+    {% endif %}
+</article>
+
+<script>
+function copyTunnel() {
+    const url = document.getElementById('tunnel-link').href;
+    navigator.clipboard.writeText(url).then(() => {
+        const fb = document.getElementById('copy-feedback');
+        fb.style.display = 'inline';
+        setTimeout(() => fb.style.display = 'none', 2000);
+    });
+}
+</script>
 {% endblock %}

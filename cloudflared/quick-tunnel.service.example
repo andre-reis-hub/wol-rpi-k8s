@@ -4,8 +4,9 @@
 
 [Unit]
 Description=Cloudflare Quick Tunnel — WoL Panel
-After=network-online.target
+After=network-online.target wol-panel.service
 Wants=network-online.target
+Requires=wol-panel.service
 
 [Service]
 User=andre
