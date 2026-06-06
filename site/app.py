@@ -59,9 +59,9 @@ def get_tunnel_url():
             ['journalctl', '-u', 'wol-tunnel', '--no-pager', '-o', 'cat'],
             capture_output=True, text=True, timeout=5
         )
-        match = re.search(r'https://[a-z0-9-]+\.trycloudflare\.com', result.stdout)
-        if match:
-            return match.group(0)
+        matches = re.findall(r'https://[a-z0-9-]+\.trycloudflare\.com', result.stdout)
+	if matches:
+                return matches[-1]
     except Exception:
         pass
     return None
