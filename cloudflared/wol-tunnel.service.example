@@ -4,8 +4,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=pi
-ExecStart=/usr/local/bin/cloudflared tunnel --config /home/pi/.cloudflared/config.yml run
+User=andre
+ExecStart=/usr/local/bin/cloudflared tunnel --config /home/andre/.cloudflared/config.yml run
 Restart=on-failure
 RestartSec=5
 

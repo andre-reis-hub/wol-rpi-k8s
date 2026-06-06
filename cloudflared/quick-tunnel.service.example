@@ -1,0 +1,19 @@
+# Serviço para Quick Tunnel (sem domínio — URL temporária)
+# A URL muda a cada reinício — use apenas para testes
+# Para URL fixa, use config.yml.example com domínio próprio
+
+[Unit]
+Description=Cloudflare Quick Tunnel — WoL Panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=andre
+ExecStart=/usr/local/bin/cloudflared tunnel --url http://localhost:5000
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
