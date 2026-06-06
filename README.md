@@ -1,6 +1,6 @@
 # wol-rpi-k8s
 
-Painel de controle remoto hospedado num Raspberry Pi Zero W para ligar o PC via Wake-on-LAN, monitorar status e acessar serviços K8s remotamente.
+Painel de controle remoto hospedado num Raspberry Pi Zero W para ligar o PC via Wake-on-LAN, monitorar status e acessar serviços Kubernetes remotamente.
 
 ## Infraestrutura
 
@@ -8,15 +8,29 @@ Painel de controle remoto hospedado num Raspberry Pi Zero W para ligar o PC via 
 - **Função:** Gateway de baixo consumo, hospeda o painel web
 - **OS:** Raspberry Pi OS Lite (32-bit, ARMv6)
 - **IP local:** fixo via reserva DHCP no roteador (MAC: `b8:27:eb:c1:50:af`)
+- **Consumo:** ~1W — fica ligado 24/7
 
-### PC Linux (acorda sob demanda)
-- **Função:** Workload pesado, roda K8s e ferramentas de monitoramento
-- **K8s:** k3s
+### PC Linux — servidor principal (acorda sob demanda)
+- **CPU:** Intel Core i9 11ª geração (8 cores / 16 threads)
+- **RAM:** 32GB
+- **OS:** Ubuntu 24.04 LTS
+- **Kubernetes:** kubeadm (k8s completo v1.32)
+- **Interface de rede:** `enp5s0` — MAC `00:e0:4c:a6:00:3e`
 - **Acionamento:** WoL magic packet enviado pelo Pi Zero
+
+### Discos do servidor
+| Disco | Tamanho | Uso |
+|-------|---------|-----|
+| `nvme1n1p3` | 206GB | Windows (dual boot) |
+| `nvme1n1p6` | 29GB | Ubuntu `/` |
+| `nvme0n1p1` | 450GB | Jogos Windows (NTFS) |
+| `nvme0n1p2` | 526GB | Kubernetes (`/var/lib/rancher`) |
+
+> O containerd foi movido via symlink para o disco secundário:
+> `sudo ln -s /var/lib/rancher/containerd/data /var/lib/containerd`
 
 ### Acesso Remoto
 - **Exposição:** Cloudflare Tunnel (`cloudflared` no Pi Zero)
-- **URL:** subdomínio Cloudflare (gratuito — requer domínio próprio na Cloudflare para URL persistente; alternativa: DuckDNS + Let's Encrypt)
 - **HTTPS:** automático via Cloudflare
 
 ## Stack
@@ -27,6 +41,11 @@ Painel de controle remoto hospedado num Raspberry Pi Zero W para ligar o PC via 
 - **Frontend:** HTMX + Jinja2
 - **Estado do PC:** JSON file
 - **Autenticação:** sessão Flask, credenciais em `.env`
+
+### PC Linux — Kubernetes
+- **Container runtime:** containerd
+- **CNI:** Flannel (`10.244.0.0/16`)
+- **Helm:** instalado para gerenciar charts
 
 ### PC Linux — Agente de boot
 - **Implementação:** Script Python + systemd service
@@ -43,7 +62,7 @@ Internet
     │
 Cloudflare Tunnel (HTTPS)
     │
-Pi Zero W [Flask]
+Pi Zero W [Flask — sempre ligado]
     ├── GET /               → Dashboard (status PC, links, botão WoL)
     ├── POST /wol           → Envia magic packet (requer login)
     └── POST /api/register  ← agente do PC registra IP e serviços
@@ -53,7 +72,7 @@ PC Linux [systemd: agente.py]
     ├── Consulta K8s services (NodePort)
     └── POST → Pi Zero /api/register
 
-K8s no PC [k3s]
+Kubernetes no PC [kubeadm v1.32]
     └── NodePort services (jogos, monitoramento)
         → Port forwarding no roteador
         → Links exibidos no dashboard
@@ -64,22 +83,22 @@ K8s no PC [k3s]
 1. Usuário acessa `https://subdominio` (Cloudflare Tunnel)
 2. Faz login
 3. Vê status: **PC offline**
-4. Clica em "Ligar PC" → Pi Zero envia WoL magic packet
+4. Clica em "Ligar PC" → Pi Zero envia WoL magic packet para `enp5s0`
 5. Dashboard mostra **"Ligando..."** (polling a cada 5s)
 6. PC boota → agente registra IP e serviços no Pi Zero
 7. Dashboard atualiza: links dos serviços disponíveis
 
 ## Roadmap
 
-| Etapa | Descrição |
-|-------|-----------|
-| 1 | Site base no Pi Zero (Flask + HTMX + login + status do PC) |
-| 2 | Integração WoL (botão ligar + estado "ligando") |
-| 3 | Cloudflare Tunnel (exposição segura à internet) |
-| 4 | Agente leve no PC (systemd + registro de IP e serviços) |
-| 5 | k3s no PC (setup inicial) |
-| 6 | Ferramentas de monitoramento como pods K8s |
-| 7 | Links dinâmicos de serviços no dashboard |
+| Etapa | Descrição | Status |
+|-------|-----------|--------|
+| 1 | Site base no Pi Zero (Flask + HTMX + login + status do PC) | ✅ |
+| 2 | Integração WoL (botão ligar + estado "ligando") | ✅ |
+| 3 | Cloudflare Tunnel (exposição segura à internet) | ⏳ |
+| 4 | Agente leve no PC (systemd + registro de IP e serviços) | ⏳ |
+| 5 | Kubernetes no PC (kubeadm v1.32) | ✅ |
+| 6 | Ferramentas de monitoramento como pods K8s | ⏳ |
+| 7 | Links dinâmicos de serviços no dashboard | ⏳ |
 
 ## Decisões
 
@@ -93,11 +112,15 @@ K8s no PC [k3s]
 | IP fixo do Pi Zero | Reserva DHCP por MAC | Agente do PC precisa de endereço local estável |
 | Agente no PC | Python + systemd | Nativo Linux, boot automático |
 | IP público reportado | `api.ipify.org` | Fonte simples e autoritativa |
-| Acesso a game servers | NodePort K8s + port forwarding no roteador | CGNAT descartado, IP público real confirmado |
-| K8s no PC | k3s | Mais leve que K8s full, ideal para estudo |
+| Acesso a game servers | NodePort k8s + port forwarding | CGNAT descartado, IP público real confirmado |
+| Kubernetes | kubeadm (k8s completo v1.32) | 32GB RAM disponível, aprendizado mais próximo do mercado |
+| Armazenamento k8s | Disco secundário 526GB via symlink | Partição `/` de 29GB insuficiente para imagens de containers |
+| WoL | Via cabo ethernet (`enp5s0`) | Placa WiFi discreta perde energia no S5 |
 | Estratégia de commits | Direto na main, um commit por funcionalidade | Histórico linear e legível |
 
-## Instalação no Raspberry Pi Zero W
+---
+
+## Instalação — Raspberry Pi Zero W
 
 Acesse o Pi via SSH e execute os passos abaixo.
 
@@ -110,7 +133,7 @@ sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
 ### 2. Clonar o repositório
 
 ```bash
-git clone https://github.com/<seu-usuario>/wol-rpi-k8s.git
+git clone https://github.com/andre-reis-hub/wol-rpi-k8s.git
 cd wol-rpi-k8s/site
 ```
 
@@ -122,8 +145,6 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> O Pi Zero W é lento na instalação — pode levar alguns minutos.
-
 ### 4. Configurar variáveis de ambiente
 
 ```bash
@@ -131,159 +152,115 @@ cp .env.example .env
 nano .env
 ```
 
-Preencha os valores:
-
 | Variável | Descrição |
 |----------|-----------|
-| `SECRET_KEY` | String aleatória longa (ex: `python3 -c "import secrets; print(secrets.token_hex(32))"`) |
+| `SECRET_KEY` | `python3 -c "import secrets; print(secrets.token_hex(32))"` |
 | `USERNAME` | Usuário do login |
 | `PASSWORD` | Senha do login |
-| `PC_MAC` | MAC address do PC (ex: `AA:BB:CC:DD:EE:FF`) |
-| `PC_LOCAL_IP` | IP local do PC na rede (ex: `192.168.15.10`) |
-| `REGISTER_TOKEN` | Token secreto compartilhado com o agente do PC (ex: `python3 -c "import secrets; print(secrets.token_hex(32))"`) |
+| `PC_MAC` | MAC do PC — `00:e0:4c:a6:00:3e` |
+| `PC_LOCAL_IP` | IP local do PC na rede |
+| `REGISTER_TOKEN` | `python3 -c "import secrets; print(secrets.token_hex(32))"` |
 
-### 5. Testar manualmente
-
-```bash
-source venv/bin/activate
-python app.py
-```
-
-Acesse `http://<ip-do-pi>:5000` na rede local para verificar se o site funciona.
-
-### 6. Rodar como serviço (systemd)
-
-Criar o arquivo de serviço:
+### 5. Rodar como serviço (systemd)
 
 ```bash
-sudo nano /etc/systemd/system/wol-panel.service
-```
-
-Conteúdo:
-
-```ini
+sudo tee /etc/systemd/system/wol-panel.service << 'EOF'
 [Unit]
 Description=WoL Panel
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=pi
-WorkingDirectory=/home/pi/wol-rpi-k8s/site
-ExecStart=/home/pi/wol-rpi-k8s/site/venv/bin/python app.py
+User=andre
+WorkingDirectory=/home/andre/wol-rpi-k8s/site
+ExecStart=/home/andre/wol-rpi-k8s/site/venv/bin/python app.py
 Restart=on-failure
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-```
+EOF
 
-Ativar e iniciar:
-
-```bash
 sudo systemctl daemon-reload
 sudo systemctl enable wol-panel
 sudo systemctl start wol-panel
-sudo systemctl status wol-panel
-```
-
-### 7. Verificar logs
-
-```bash
-sudo journalctl -u wol-panel -f
 ```
 
 ---
 
-## Cloudflare Tunnel (acesso remoto seguro)
+## Instalação — PC Linux (Kubernetes)
 
-O Cloudflare Tunnel expõe o painel à internet sem abrir portas no roteador. O HTTPS é automático.
+### 1. Pré-requisito: disco secundário
 
-> **Pré-requisito:** um domínio próprio adicionado ao Cloudflare (plano gratuito). Domínios `.com` custam ~$10/ano diretamente na Cloudflare. Para testar sem domínio, veja a opção Quick Tunnel no final.
-
-### 1. Instalar o cloudflared no Pi Zero
+Se a partição `/` for pequena (<30GB), mova o containerd para um disco maior após a instalação:
 
 ```bash
-# Baixa o binário ARM (compatível com ARMv6)
-wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm -O cloudflared
-chmod +x cloudflared
-sudo mv cloudflared /usr/local/bin/
-cloudflared --version
+sudo systemctl stop kubelet containerd
+sudo mkdir -p /var/lib/rancher/containerd
+sudo mv /var/lib/containerd /var/lib/rancher/containerd/data
+sudo ln -s /var/lib/rancher/containerd/data /var/lib/containerd
+sudo systemctl start containerd kubelet
 ```
 
-### 2. Autenticar na conta Cloudflare
+### 2. Rodar o script de instalação
 
 ```bash
-cloudflared tunnel login
+git clone https://github.com/andre-reis-hub/wol-rpi-k8s.git
+cd wol-rpi-k8s/k8s
+chmod +x setup-k8s.sh
+./setup-k8s.sh
 ```
 
-Abrirá um link no terminal — acesse no navegador e autorize o domínio desejado.
-
-### 3. Criar o tunnel
+### 3. Verificar o cluster
 
 ```bash
-cloudflared tunnel create wol-panel
-```
-
-Anote o UUID gerado (ex: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
-
-### 4. Configurar o tunnel
-
-```bash
-cp ~/wol-rpi-k8s/cloudflared/config.yml.example ~/.cloudflared/config.yml
-nano ~/.cloudflared/config.yml
-```
-
-Substitua `<TUNNEL-UUID>` e `<SEU-DOMINIO>` pelos valores reais.
-
-### 5. Criar o registro DNS
-
-```bash
-cloudflared tunnel route dns wol-panel panel.<SEU-DOMINIO>
-```
-
-### 6. Testar
-
-```bash
-cloudflared tunnel run wol-panel
-```
-
-Acesse `https://panel.<SEU-DOMINIO>` e verifique se o painel abre.
-
-### 7. Rodar como serviço (systemd)
-
-```bash
-sudo cp ~/wol-rpi-k8s/cloudflared/wol-tunnel.service.example \
-        /etc/systemd/system/wol-tunnel.service
-
-sudo systemctl daemon-reload
-sudo systemctl enable wol-tunnel
-sudo systemctl start wol-tunnel
-sudo systemctl status wol-tunnel
-```
-
-### Quick Tunnel (teste sem domínio)
-
-Para testar rapidamente sem domínio, use o tunnel temporário — a URL muda a cada reinício:
-
-```bash
-cloudflared tunnel --url http://localhost:5000
+kubectl get nodes
+kubectl get pods -A
 ```
 
 ---
 
-## Agente no PC Linux (etapa 4)
+## Wake-on-LAN no Linux
 
-Script Python que roda no boot do PC, descobre o IP público, lista os serviços K8s ativos e registra tudo no painel do Pi Zero. Atualiza a cada 60s enquanto o PC está ligado.
+### Configurar na BIOS
+- **Chipset → PCH-IO Configuration → DeepSx Power Policies:** `Enabled in S5`
 
-### 1. Clonar o repositório no PC (se ainda não fez)
+### Configurar no Linux
 
 ```bash
-git clone https://github.com/<seu-usuario>/wol-rpi-k8s.git
-cd wol-rpi-k8s/agent
+# Verificar suporte
+sudo ethtool enp5s0 | grep -i wake
+# Deve mostrar: Wake-on: g
+
+# Habilitar permanentemente via systemd
+sudo tee /etc/systemd/system/wol.service << 'EOF'
+[Unit]
+Description=Enable Wake-on-LAN on enp5s0
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/ethtool -s enp5s0 wol g
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl enable wol.service
+sudo systemctl start wol.service
 ```
 
-### 2. Criar ambiente virtual e instalar dependências
+---
+
+## Pontos de atenção
+
+- **IP do Pi Zero:** fixar via reserva DHCP antes de subir o agente no PC
+- **Disco:** partição `/` do Ubuntu tem 29GB — imagens k8s ficam no disco secundário via symlink
+- **Port forwarding para jogos:** configuração manual no roteador; pods expostos via NodePort (30000–32767)
+- **Segurança WoL:** endpoint protegido por login
+- **Estado intermediário:** entre WoL enviado e PC online leva 1–3 min
+- **single-node:** taint do control-plane removido com `kubectl taint nodes --all node-role.kubernetes.io/control-plane-`
+irtual e instalar dependências
 
 ```bash
 python3 -m venv venv
