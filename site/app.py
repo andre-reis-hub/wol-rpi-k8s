@@ -7,7 +7,7 @@ from functools import wraps
 
 import wakeonlan
 from dotenv import load_dotenv
-from flask import Flask, redirect, render_template, request, session, url_for, jsonify
+from flask import Flask, redirect, render_template, request, session, url_for
 
 load_dotenv()
 
@@ -20,7 +20,7 @@ PC_MAC = os.environ['PC_MAC']
 PC_LOCAL_IP = os.environ['PC_LOCAL_IP']
 REGISTER_TOKEN = os.environ.get('REGISTER_TOKEN', '')
 
-WAKING_TIMEOUT = 300  # segundos antes de desistir do estado "ligando"
+WAKING_TIMEOUT = 300
 
 STATE_FILE = os.path.join(os.path.dirname(__file__), 'state.json')
 
@@ -53,15 +53,14 @@ def pc_online():
 
 
 def get_tunnel_url():
-    """Lê a URL do Cloudflare Tunnel a partir do journal do serviço wol-tunnel."""
     try:
         result = subprocess.run(
             ['journalctl', '-u', 'wol-tunnel', '--no-pager', '-o', 'cat'],
             capture_output=True, text=True, timeout=5
         )
         matches = re.findall(r'https://[a-z0-9-]+\.trycloudflare\.com', result.stdout)
-	if matches:
-                return matches[-1]
+        if matches:
+            return matches[-1]
     except Exception:
         pass
     return None
