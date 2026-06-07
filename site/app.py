@@ -53,6 +53,9 @@ def pc_online():
 
 
 def get_tunnel_url():
+    url = os.environ.get('TUNNEL_URL')
+    if url:
+        return url
     try:
         result = subprocess.run(
             ['journalctl', '-u', 'wol-tunnel', '--no-pager', '-o', 'cat'],
