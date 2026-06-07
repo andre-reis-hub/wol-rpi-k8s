@@ -1,13 +1,12 @@
 [Unit]
-Description=WoL Agent — registra IP e serviços K8s no painel
+Description=WoL Agent — registra IP e serviços no painel
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=<seu-usuario-linux>
-WorkingDirectory=/home/<seu-usuario-linux>/wol-rpi-k8s/agent
-EnvironmentFile=/home/<seu-usuario-linux>/wol-rpi-k8s/agent/.env
-ExecStart=/home/<seu-usuario-linux>/wol-rpi-k8s/agent/venv/bin/python agent.py
+User=andre-reis
+WorkingDirectory=/home/andre-reis/Documents/wol-rpi-k8s/agent
+ExecStart=/home/andre-reis/Documents/wol-rpi-k8s/agent/venv/bin/python agent.py
 Restart=on-failure
 RestartSec=10
 
