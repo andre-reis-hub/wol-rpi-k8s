@@ -1,0 +1,28 @@
+#!/bin/bash
+# Script de auto-unseal do Vault
+# Copiar para /etc/vault/unseal.sh e ajustar permissões:
+# sudo chmod 500 /etc/vault/unseal.sh
+# sudo chown root:root /etc/vault/unseal.sh
+
+export KUBECONFIG=/home/andre-reis/.kube/config
+
+while ! kubectl get pod vault-0 -n vault 2>/dev/null | grep -q Running; do
+  echo "Aguardando vault-0 ficar Running..."
+  sleep 5
+done
+
+while ! kubectl exec -n vault vault-0 -- vault status 2>/dev/null | grep -q "Initialized"; do
+  echo "Aguardando Vault responder..."
+  sleep 5
+done
+
+SEALED=$(kubectl exec -n vault vault-0 -- vault status 2>/dev/null | grep "Sealed" | awk '{print $2}')
+
+if [ "$SEALED" = "true" ]; then
+  echo "Vault está sealed — fazendo unseal..."
+  UNSEAL_KEY=$(cat /etc/vault/unseal-key)
+  kubectl exec -n vault vault-0 -- vault operator unseal "$UNSEAL_KEY"
+  echo "Unseal concluído!"
+else
+  echo "Vault já está unsealed."
+fi
