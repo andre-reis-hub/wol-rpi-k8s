@@ -2,6 +2,10 @@ tunnel: <TUNNEL-UUID>
 credentials-file: /home/andre/.cloudflared/<TUNNEL-UUID>.json
 
 ingress:
-  - hostname: panel.<SEU-DOMINIO>
+  - hostname: panel.areis-solution.com
     service: http://localhost:5000
+  - hostname: argocd.areis-solution.com
+    service: https://192.168.15.14:30956
+    originRequest:
+      noTLSVerify: true
   - service: http_status:404
