@@ -1,5 +1,5 @@
 # Checklist — Instalação Kubernetes Single-Node
-> Baseado nos incidentes do setup de 05–06/Jun/2026.  
+> Baseado nos incidentes do setup de 05–09/Jun/2026.  
 > Siga essa ordem. Não pule etapas.
 
 ---
@@ -8,27 +8,24 @@
 
 - [ ] **Fixar IPs via reserva DHCP no roteador**
   ```bash
-  # Verificar IP atual
   ip addr show enp5s0
-  # Deve bater com o IP reservado no roteador
+  # IP deve bater com o reservado no roteador
   ```
 
 - [ ] **Identificar os discos corretamente**
   ```bash
   lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE
   sudo parted -l
-  # Anotar: qual é o disco do SO, qual é o disco secundário
+  # Anotar: qual é o disco do SO, qual é o secundário
   ```
 
 - [ ] **Montar disco secundário e criar symlink do containerd**
   ```bash
   sudo mkdir -p /var/lib/rancher
   sudo mount /dev/nvme1n1p2 /var/lib/rancher
-  # Adicionar ao fstab:
   echo '/dev/nvme1n1p2 /var/lib/rancher ext4 defaults 0 2' | sudo tee -a /etc/fstab
   sudo mkdir -p /var/lib/rancher/containerd/data
   sudo ln -s /var/lib/rancher/containerd/data /var/lib/containerd
-  # Verificar:
   df -h /var/lib/rancher  # deve mostrar ~526GB
   ```
 
@@ -59,7 +56,6 @@ cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
 overlay
 br_netfilter
 EOF
-
 sudo modprobe overlay
 sudo modprobe br_netfilter
 
@@ -68,7 +64,6 @@ net.bridge.bridge-nf-call-iptables  = 1
 net.bridge.bridge-nf-call-ip6tables = 1
 net.ipv4.ip_forward                 = 1
 EOF
-
 sudo sysctl --system
 ```
 
@@ -99,12 +94,11 @@ sudo apt-mark hold kubelet kubeadm kubectl
 
 ### 5. Inicializar o cluster
 ```bash
-# Substitua pelo IP fixo do servidor
 sudo kubeadm init \
   --pod-network-cidr=10.244.0.0/16 \
   --apiserver-advertise-address=192.168.15.14
 ```
-✅ Verificar: output deve terminar com `Your Kubernetes control-plane has initialized successfully!`
+✅ Output deve terminar com: `Your Kubernetes control-plane has initialized successfully!`
 
 ### 6. Kubeconfig
 ```bash
@@ -131,21 +125,111 @@ curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 |
 
 ---
 
+## Vault (Raft + auto-unseal)
+
+### Instalar
+```bash
+sudo mkdir -p /var/lib/rancher/vault
+sudo chown 100:1000 /var/lib/rancher/vault
+kubectl apply -f k8s/vault/pv.yaml
+helm repo add hashicorp https://helm.releases.hashicorp.com && helm repo update
+helm install vault hashicorp/vault --namespace vault --create-namespace -f k8s/vault/values.yaml
+```
+
+### Inicializar (primeira vez)
+```bash
+kubectl exec -it vault-0 -n vault -- vault operator init -key-shares=1 -key-threshold=1
+# ⚠️ SALVAR Unseal Key e Root Token no Bitwarden!
+kubectl exec -it vault-0 -n vault -- vault operator unseal
+```
+
+### Auto-unseal
+```bash
+sudo mkdir -p /etc/vault && sudo chmod 700 /etc/vault
+sudo nano /etc/vault/unseal-key   # colar a unseal key
+sudo chmod 400 /etc/vault/unseal-key
+sudo cp k8s/vault/unseal.sh.example /etc/vault/unseal.sh
+sudo chmod 500 /etc/vault/unseal.sh
+
+sudo tee /etc/systemd/system/vault-unseal.service << 'EOF'
+[Unit]
+Description=Auto-unseal do HashiCorp Vault
+After=network-online.target kubelet.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/etc/vault/unseal.sh
+RemainAfterExit=yes
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable vault-unseal
+```
+
+---
+
+## ArgoCD
+
+### Instalar
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "NodePort"}}'
+```
+
+### Senha inicial
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+```
+
+### CLI
+```bash
+curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+chmod +x argocd && sudo mv argocd /usr/local/bin/
+argocd login argocd.areis-solution.com --username admin --grpc-web
+```
+
+### Conectar repo e criar Application
+```bash
+argocd repo add https://github.com/andre-reis-hub/wol-rpi-k8s.git --username andre-reis-hub --password <PAT>
+
+argocd app create wol-infra \
+  --repo https://github.com/andre-reis-hub/wol-rpi-k8s.git \
+  --path k8s/vault \
+  --dest-server https://kubernetes.default.svc \
+  --dest-namespace vault \
+  --sync-policy automated \
+  --auto-prune \
+  --self-heal
+```
+
+---
+
 ## Verificação final
 
 ```bash
 kubectl get nodes
-# NAME               STATUS   ROLES           AGE   VERSION
-# andre-reis-hm570   Ready    control-plane   Xm    v1.32.x
+# Ready
 
 kubectl get pods -A
-# Todos devem estar Running
+# Todos Running
 
-helm version
-# version.BuildInfo{Version:"v3.x.x" ...}
+kubectl exec -n vault vault-0 -- vault status | grep Sealed
+# Sealed: false
+
+argocd app list
+# STATUS: Synced, HEALTH: Healthy
 
 df -h /var/lib/rancher
-# Deve mostrar ~526GB no nvme1n1p2
+# ~526GB disponível
+
+free -h
+# Swap: 0B
 ```
 
 ---
@@ -160,3 +244,6 @@ df -h /var/lib/rancher
 | `x509: certificate` | IP mudou após kubeadm init | `kubeadm reset` + `kubeadm init` com IP correto |
 | containerd não inicia | Disco secundário não montado | `mount /dev/nvme1n1p2 /var/lib/rancher` |
 | superblock inválido | Corrupção após resize | `mkfs.ext4 -F /dev/nvme1n1p2` |
+| Vault sealed após reboot | Comportamento esperado | `vault operator unseal` ou auto-unseal |
+| ArgoCD downtime no deploy | PV ReadWriteOnce | Aceito para homelab — auto-unseal resolve |
+| PAT GitHub expirado | Token vencido | Gerar novo PAT e `argocd repo update` |

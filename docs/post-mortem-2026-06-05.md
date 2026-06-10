@@ -1,12 +1,12 @@
 # Post Mortem — Setup do Cluster Kubernetes
-**Data:** 05–06 de Junho de 2026  
+**Data:** 05–09 de Junho de 2026  
 **Ambiente:** Ubuntu 24.04, i9 11ª geração, 32GB RAM, dual SSD
 
 ---
 
 ## Resumo
 
-Setup completo de um cluster Kubernetes single-node com Wake-on-LAN, particionamento de disco secundário e painel de controle no Raspberry Pi Zero W. O processo levou aproximadamente 1 dia com múltiplos incidentes que foram resolvidos e documentados abaixo.
+Setup completo de um cluster Kubernetes single-node com Wake-on-LAN, particionamento de disco secundário, painel de controle no Raspberry Pi Zero W, Vault com auto-unseal e ArgoCD GitOps. O processo levou aproximadamente 4 dias com múltiplos incidentes documentados abaixo.
 
 ---
 
@@ -21,114 +21,141 @@ Setup completo de um cluster Kubernetes single-node com Wake-on-LAN, particionam
 O servidor i9 estava com IP dinâmico via DHCP. Após um reboot, o IP mudou de `192.168.15.13` para `192.168.15.14`. O certificado TLS do Kubernetes havia sido gerado para o IP antigo, tornando toda comunicação com o API server impossível.
 
 **Causa raiz:**  
-Ausência de reserva DHCP por MAC antes da instalação do k8s. O kubeadm embute o IP do servidor nos certificados TLS no momento do `init` — qualquer mudança de IP invalida os certificados.
+Ausência de reserva DHCP por MAC antes da instalação do k8s.
 
 **Solução aplicada:**  
-- Reserva DHCP por MAC no roteador para o i9 (`00:e0:4c:a6:00:3e` → `192.168.15.14`)
-- Reserva DHCP por MAC para o RPi Zero (`b8:27:eb:c1:50:af` → `192.168.15.12`)
-- `kubeadm reset` + `kubeadm init` com `--apiserver-advertise-address=192.168.15.14`
+Reserva DHCP por MAC no roteador + `kubeadm reset` + `kubeadm init` com IP correto.
 
 **Mitigação futura:**  
-Sempre fixar IPs via reserva DHCP **antes** de instalar o k8s. Verificar com `ip addr` que o IP está correto antes do `kubeadm init`.
+Sempre fixar IPs via reserva DHCP **antes** de instalar o k8s.
 
 ---
 
 ### 2. Disco errado formatado (`nvme0n1p2`)
 
 **Severidade:** Alta  
-**Impacto:** Microsoft Reserved Partition do Windows formatada (16MB — sem perda de dados do usuário)
+**Impacto:** Microsoft Reserved Partition do Windows formatada (16MB)
 
 **O que aconteceu:**  
-O servidor tem dois SSDs: `nvme0n1` (256GB — Windows/Ubuntu) e `nvme1n1` (1TB — dados). A partição para o Kubernetes deveria ser criada em `nvme1n1p2`, mas os comandos foram executados em `nvme0n1p2` por confusão entre os dispositivos.
+O servidor tem dois SSDs: `nvme0n1` (256GB) e `nvme1n1` (1TB). Comandos executados em `nvme0n1p2` por confusão entre os dispositivos.
 
 **Causa raiz:**  
-Não verificar o `lsblk` completo antes de executar comandos de disco. Os nomes `nvme0n1` e `nvme1n1` são visualmente similares e fáceis de confundir.
+Não verificar o `lsblk` completo antes de executar comandos de disco.
 
 **Solução aplicada:**  
-- Corrigido o `/etc/fstab` de `nvme0n1p2` para `nvme1n1p2`
-- Montado o disco correto em `/var/lib/rancher`
-- A Microsoft Reserved Partition foi reformatada mas não afeta o funcionamento do Windows
+Corrigido o `/etc/fstab` e montado o disco correto. A Microsoft Reserved Partition foi reformatada mas não afeta o Windows.
 
 **Mitigação futura:**  
-Sempre executar `lsblk` e `sudo parted -l` antes de qualquer operação de disco. Anotar explicitamente qual dispositivo é qual antes de começar.
-
-```bash
-# Identificar discos antes de qualquer operação
-lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,LABEL
-sudo parted -l
-```
+Sempre executar `lsblk` e `sudo parted -l` antes de qualquer operação de disco.
 
 ---
 
 ### 3. Swap ativo após reboot — kubelet recusou iniciar
 
 **Severidade:** Média  
-**Impacto:** kubelet não iniciou, `kubeadm init` falhou na fase de health check
+**Impacto:** kubelet não iniciou, `kubeadm init` falhou
 
 **O que aconteceu:**  
-O comando `swapoff -a` foi executado mas o `/etc/fstab` não foi corretamente modificado. Após o reboot, o swap voltou a ser ativado automaticamente. O kubelet do Kubernetes recusa iniciar com swap ativo.
-
-**Causa raiz:**  
-O `swapoff -a` desativa o swap apenas na sessão atual — não persiste após reboot. A edição do `fstab` na primeira tentativa não comentou corretamente a linha do swap.
+O `swapoff -a` foi executado mas o `/etc/fstab` não foi corretamente modificado. Após reboot, swap voltou ativo.
 
 **Solução aplicada:**  
 ```bash
 sudo swapoff -a
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
-free -h  # verificar Swap: 0B
 ```
 
 **Mitigação futura:**  
-Sempre verificar `free -h` mostrando `Swap: 0B` antes de executar o `kubeadm init`. Incluir essa verificação no checklist.
+Sempre verificar `free -h` mostrando `Swap: 0B` antes do `kubeadm init`.
 
 ---
 
 ### 4. Superblock corrompido no `nvme1n1p2`
 
 **Severidade:** Média  
-**Impacto:** Disco secundário inacessível após reboot, dados do containerd perdidos, cluster precisou ser reiniciado do zero
+**Impacto:** Disco secundário inacessível, dados do containerd perdidos
 
 **O que aconteceu:**  
-Após redimensionar a partição NTFS de 954GB para 450GB e criar uma nova partição ext4 adjacente, o superblock da partição ext4 ficou corrompido. Na tentativa de montar o disco após reboot, o `mount` retornou erro de superblock inválido.
-
-**Causa raiz:**  
-Provável corrupção durante a operação de redimensionamento do NTFS com `parted`. O NTFS foi redimensionado sem que o Windows tivesse verificado/liberado o filesystem antes — o `parted` fez o resize diretamente.
+Após redimensionar a partição NTFS, o superblock da nova partição ext4 ficou corrompido.
 
 **Solução aplicada:**  
 ```bash
-sudo mkfs.ext4 -F /dev/nvme1n1p2  # reformatar
-sudo mount /dev/nvme1n1p2 /var/lib/rancher
+sudo mkfs.ext4 -F /dev/nvme1n1p2
 ```
 
 **Mitigação futura:**  
-- Antes de redimensionar partições NTFS, inicializar o Windows e usar o Disk Management para liberar o filesystem
-- Após criar partição ext4, verificar com `fsck` antes de usar
-- Não armazenar dados críticos no disco secundário sem backup
+Usar `fsck` após criar partição ext4. Não redimensionar NTFS com Windows ativo.
 
 ---
 
-### 5. Containerd usando disco principal (disk-pressure no k8s)
+### 5. Containerd usando disco principal (disk-pressure)
 
 **Severidade:** Média  
-**Impacto:** Pods não agendados — node em estado `disk-pressure`
+**Impacto:** Pods não agendados — node em `disk-pressure`
 
 **O que aconteceu:**  
-O containerd por padrão armazena imagens em `/var/lib/containerd`, que fica na partição `/` do Ubuntu (29GB). Após o `kubeadm init` baixar as imagens do control plane (~2GB), a partição chegou a 87% de uso, acionando o mecanismo de disk-pressure do Kubernetes que impediu o agendamento de novos pods, incluindo o CoreDNS.
-
-**Causa raiz:**  
-Partição `/` pequena (29GB) combinada com o caminho padrão do containerd. O disco secundário foi montado em `/var/lib/rancher` mas o containerd não foi reconfigurado para usá-lo antes do `kubeadm init`.
+Containerd armazena imagens em `/var/lib/containerd` (partição `/` de 29GB). Após baixar imagens do control plane, chegou a 87% de uso.
 
 **Solução aplicada:**  
 ```bash
 sudo systemctl stop kubelet containerd
-sudo mkdir -p /var/lib/rancher/containerd/data
 sudo mv /var/lib/containerd /var/lib/rancher/containerd/data
 sudo ln -s /var/lib/rancher/containerd/data /var/lib/containerd
 sudo systemctl start containerd kubelet
 ```
 
 **Mitigação futura:**  
-Criar o symlink **antes** do `kubeadm init`. Ver checklist de instalação.
+Criar symlink **antes** do `kubeadm init`.
+
+---
+
+### 6. Vault em modo dev — secrets perdidos no reboot
+
+**Severidade:** Média  
+**Impacto:** Todos os secrets perdidos após restart do pod vault-0
+
+**O que aconteceu:**  
+Vault instalado com `dev.enabled=true` armazena secrets em memória. Ao reiniciar o pod, todos os secrets eram apagados.
+
+**Solução aplicada:**  
+Reinstalação com modo standalone + Raft storage + PersistentVolume no disco secundário.
+
+**Mitigação futura:**  
+Nunca usar modo dev em ambiente com dados reais. Usar Raft desde o início.
+
+---
+
+### 7. Vault sealed após reboot — intervenção manual necessária
+
+**Severidade:** Baixa  
+**Impacto:** Vault inacessível após cada reboot até unseal manual
+
+**O que aconteceu:**  
+Comportamento esperado do Vault — após restart do pod, fica em estado sealed por segurança.
+
+**Solução aplicada:**  
+Script de auto-unseal via systemd lendo a unseal key de arquivo protegido `/etc/vault/unseal-key`.
+
+**Mitigação futura:**  
+Já mitigado. Para produção, considerar AWS KMS ou Google Cloud KMS.
+
+---
+
+### 8. ArgoCD — downtime durante updates (Recreate strategy)
+
+**Severidade:** Baixa  
+**Impacto:** ~30 segundos de downtime do Vault durante deploys
+
+**O que aconteceu:**  
+O PersistentVolume do Vault usa `ReadWriteOnce` — apenas um pod pode montar por vez. O ArgoCD não consegue fazer rolling update, usando Recreate: mata o pod antigo antes de subir o novo.
+
+**Causa raiz:**  
+Single-node com PV local `ReadWriteOnce` não suporta dois pods simultâneos no mesmo volume.
+
+**Solução aplicada:**  
+Aceito para homelab. O auto-unseal garante que o Vault volta automaticamente após o deploy.
+
+**Mitigação futura:**  
+Para zero downtime: usar NFS (`ReadWriteMany`) ou dois discos com replicação. Fora do escopo atual.
 
 ---
 
@@ -137,11 +164,12 @@ Criar o symlink **antes** do `kubeadm init`. Ver checklist de instalação.
 | Lição | Ação |
 |-------|------|
 | IP fixo é pré-requisito do k8s | Reservar DHCP antes de tudo |
-| `swapoff` não persiste | Sempre verificar `free -h` antes do `kubeadm init` |
+| `swapoff` não persiste | Verificar `free -h` antes do `kubeadm init` |
 | Nomes de disco são confusos | Usar `lsblk` e anotar antes de qualquer operação |
-| Partição `/` pequena não serve para k8s | Mover containerd para disco grande antes do init |
-| Resize de NTFS é arriscado | Preferir particionar espaço não alocado |
-| Certificados k8s são atrelados ao IP | IP fixo é obrigatório, não opcional |
+| Partição `/` pequena não serve para k8s | Mover containerd antes do init |
+| Vault dev mode perde dados | Usar Raft desde o início |
+| Vault sealed após reboot | Configurar auto-unseal |
+| ReadWriteOnce causa downtime | Aceito para homelab, NFS para produção |
 
 ---
 
@@ -151,11 +179,15 @@ Criar o symlink **antes** do `kubeadm init`. Ver checklist de instalação.
 |------------|--------|---------|
 | Wake-on-LAN | ✅ | `enp5s0`, magic packet via RPi |
 | RPi Zero W — painel Flask | ✅ | `192.168.15.12:5000`, systemd |
+| Cloudflare Tunnel | ✅ | `panel.areis-solution.com`, `argocd.areis-solution.com` |
 | i9 — Ubuntu 24.04 | ✅ | IP fixo `192.168.15.14` |
 | Kubernetes v1.32.13 | ✅ | kubeadm, single-node |
 | CNI | ✅ | Flannel `10.244.0.0/16` |
 | Helm v3.21.0 | ✅ | `/usr/local/bin/helm` |
 | Disco secundário | ✅ | `nvme1n1p2` → `/var/lib/rancher` (526GB) |
-| Containerd | ✅ | Symlink para disco secundário |
-| Vault | ⏳ | Próximo passo |
-| ArgoCD | ⏳ | Próximo passo |
+| Vault | ✅ | Raft storage + auto-unseal |
+| ArgoCD | ✅ | GitOps monitorando `k8s/vault/` |
+| Agente | ✅ | Registra IP e serviços no painel |
+| Prometheus + Grafana | ⏳ | Próximo passo |
+| GitHub Actions | ⏳ | Próximo passo |
+| Terraform | ⏳ | Próximo passo |
