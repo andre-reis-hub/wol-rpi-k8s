@@ -1,0 +1,147 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-game-servers
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  game-servers.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "panels": [
+        {
+          "title": "CPU por Namespace",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "targets": [
+            {
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\"}[5m])) by (namespace)",
+              "legendFormat": "{{namespace}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "short" },
+            "overrides": []
+          }
+        },
+        {
+          "title": "Memória por Namespace",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "targets": [
+            {
+              "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\"}) by (namespace)",
+              "legendFormat": "{{namespace}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "bytes" },
+            "overrides": []
+          }
+        },
+        {
+          "title": "Pods em execução por Namespace",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 8, "x": 0, "y": 8 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "targets": [
+            {
+              "expr": "sum(kube_pod_status_phase{namespace=~\"$namespace\", phase=\"Running\"}) by (namespace)",
+              "legendFormat": "{{namespace}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Restarts por Pod (1h)",
+          "type": "table",
+          "gridPos": { "h": 8, "w": 16, "x": 8, "y": 8 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "targets": [
+            {
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[1h])) by (namespace, pod)",
+              "format": "table",
+              "instant": true,
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Requests vs Limits — CPU",
+          "type": "bargauge",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "targets": [
+            {
+              "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\"}) by (namespace)",
+              "legendFormat": "{{namespace}} - request",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\"}) by (namespace)",
+              "legendFormat": "{{namespace}} - limit",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "title": "Requests vs Limits — Memória",
+          "type": "bargauge",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "targets": [
+            {
+              "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\"}) by (namespace)",
+              "legendFormat": "{{namespace}} - request",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\"}) by (namespace)",
+              "legendFormat": "{{namespace}} - limit",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "bytes" },
+            "overrides": []
+          }
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["wol-rpi-k8s", "game-servers"],
+      "templating": {
+        "list": [
+          {
+            "name": "DS_PROMETHEUS",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {}
+          },
+          {
+            "name": "namespace",
+            "type": "query",
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "query": "label_values(kube_pod_info, namespace)",
+            "refresh": 2,
+            "includeAll": true,
+            "multi": true,
+            "current": { "text": "All", "value": "$__all" }
+          }
+        ]
+      },
+      "time": { "from": "now-1h", "to": "now" },
+      "timezone": "browser",
+      "title": "Game Servers — Recursos por Namespace",
+      "uid": "game-servers-resources",
+      "version": 1
+    }
