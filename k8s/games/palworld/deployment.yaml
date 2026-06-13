@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: palworld-server
+  namespace: palworld
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: palworld-server
+  template:
+    metadata:
+      labels:
+        app: palworld-server
+    spec:
+      containers:
+        - name: palworld-server
+          image: thijsvanloef/palworld-server-docker:latest
+          ports:
+            - containerPort: 8211
+              protocol: UDP
+            - containerPort: 27015
+              protocol: UDP
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: PORT
+              value: "8211"
+            - name: PLAYERS
+              value: "8"
+            - name: MULTITHREADING
+              value: "true"
+            - name: RCON_ENABLED
+              value: "true"
+            - name: RCON_PORT
+              value: "25575"
+            - name: TZ
+              value: "America/Sao_Paulo"
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: palworld-secrets
+                  key: admin-password
+            - name: SERVER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: palworld-secrets
+                  key: server-password
+            - name: SERVER_NAME
+              value: "Servidor do Andre"
+            - name: SERVER_DESCRIPTION
+              value: "Servidor caseiro - wol-rpi-k8s"
+            - name: DIFFICULTY
+              value: "None"
+            - name: DAY_TIME_SPEED
+              value: "1.0"
+            - name: NIGHT_TIME_SPEED
+              value: "1.0"
+            - name: EXP_RATE
+              value: "1.0"
+            - name: PAL_CAPTURE_RATE
+              value: "1.0"
+            - name: PAL_SPAWN_NUM_RATE
+              value: "1.0"
+            - name: PAL_DAMAGE_RATE_ATTACK
+              value: "1.0"
+            - name: PAL_DAMAGE_RATE_DEFENSE
+              value: "1.0"
+            - name: PLAYER_DAMAGE_RATE_ATTACK
+              value: "1.0"
+            - name: PLAYER_DAMAGE_RATE_DEFENSE
+              value: "1.0"
+            - name: DEATH_PENALTY
+              value: "Item"
+            - name: ENABLE_PLAYER_TO_PLAYER_DAMAGE
+              value: "false"
+            - name: ENABLE_FRIENDLY_FIRE
+              value: "false"
+            - name: ENABLE_INVADER_ENEMY
+              value: "true"
+            - name: ENABLE_AIM_ASSIST_PAD
+              value: "true"
+            - name: ENABLE_AIM_ASSIST_KEYBOARD
+              value: "false"
+            - name: DROP_ITEM_MAX_NUM
+              value: "3000"
+            - name: BASE_CAMP_MAX_NUM
+              value: "128"
+            - name: BASE_CAMP_WORKER_MAX_NUM
+              value: "15"
+            - name: GUILD_PLAYER_MAX_NUM
+              value: "20"
+            - name: AUTO_RESET_GUILD_NO_ONLINE_PLAYERS
+              value: "false"
+            - name: BACKUP_ENABLED
+              value: "true"
+            - name: BACKUP_CRON_EXPRESSION
+              value: "0 */6 * * *"
+            - name: DELETE_OLD_BACKUPS
+              value: "true"
+            - name: OLD_BACKUP_DAYS
+              value: "7"
+            - name: COMMUNITY
+              value: "false"
+            - name: UPDATE_ON_BOOT
+              value: "true"
+          resources:
+            requests:
+              memory: "8Gi"
+              cpu: "2000m"
+            limits:
+              memory: "16Gi"
+              cpu: "6000m"
+          volumeMounts:
+            - name: palworld-data
+              mountPath: /palworld
+      volumes:
+        - name: palworld-data
+          persistentVolumeClaim:
+            claimName: palworld-pvc
