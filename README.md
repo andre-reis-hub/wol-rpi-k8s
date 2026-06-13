@@ -18,10 +18,10 @@ Raspberry Pi Zero W [sempre ligado — 192.168.15.12]
 
 PC Linux i9 [acorda sob demanda — 192.168.15.14]
     └── Kubernetes
-          ├── Vault      (secrets)
-          ├── ArgoCD     (GitOps)
-          ├── Prometheus (métricas)
-          ├── Grafana    (dashboards)
+          ├── Vault       (secrets — Raft + auto-unseal)
+          ├── ArgoCD      (GitOps)
+          ├── Prometheus  (métricas)
+          ├── Grafana     (dashboards)
           └── Game servers (NodePort)
 ```
 
@@ -33,23 +33,18 @@ PC Linux i9 [acorda sob demanda — 192.168.15.14]
 3. Clica "Ligar PC" → RPi envia WoL magic packet
 4. i9 boota (~1-3 min)
 5. Agente registra IP público e serviços k8s no painel
-6. Dashboard atualiza com links dos serviços
+6. Vault faz auto-unseal automaticamente
+7. Dashboard atualiza com links dos serviços
 ```
 
 ## Fluxo de deploy (GitOps)
 
 ```
-git push → GitHub Actions (CI)
-              ├── testes
-              ├── build imagem Docker
-              ├── push ghcr.io (gratuito)
-              └── atualiza manifesto k8s no repo
-                      ↓
-                  ArgoCD (CD) detecta mudança
-                      ↓
-                  Aplica no cluster k8s
-                      ↓
-                  Grafana exibe métricas do deploy
+git push → ArgoCD detecta mudança no repo
+              ↓
+         Aplica no cluster k8s
+              ↓
+         Grafana exibe métricas do deploy
 ```
 
 ---
@@ -64,6 +59,7 @@ git push → GitHub Actions (CI)
 
 ### PC Linux — servidor principal (acorda sob demanda)
 - **CPU:** Intel Core i9 11ª geração (8 cores / 16 threads)
+- **GPU:** NVIDIA GTX 1660
 - **RAM:** 32GB
 - **OS:** Ubuntu 24.04 LTS
 - **IP:** fixo `192.168.15.14` (MAC: `00:e0:4c:a6:00:3e`)
@@ -77,8 +73,11 @@ git push → GitHub Actions (CI)
 | `nvme1n1p1` | 450GB | Jogos Windows (NTFS) |
 | `nvme1n1p2` | 526GB | Kubernetes — `/var/lib/rancher` |
 
-> O containerd usa symlink para o disco secundário:
-> `sudo ln -s /var/lib/rancher/containerd/data /var/lib/containerd`
+> Containerd, Vault e Prometheus usam o disco secundário via symlink/PV:
+> - `/var/lib/containerd` → symlink para `/var/lib/rancher/containerd/data`
+> - Vault PV → `/var/lib/rancher/vault`
+> - Prometheus PV → `/var/lib/rancher/prometheus`
+> - StorageClass `local-storage` (provisioner manual, `WaitForFirstConsumer`)
 
 ---
 
@@ -89,7 +88,7 @@ git push → GitHub Actions (CI)
 |-----------|--------|
 | Flask + HTMX + Jinja2 | Painel web |
 | wakeonlan | Envio do magic packet |
-| cloudflared | Tunnel Cloudflare |
+| cloudflared | Tunnel Cloudflare (multi-hostname) |
 | systemd | Gerencia os serviços |
 
 ### Kubernetes (i9)
@@ -98,19 +97,18 @@ git push → GitHub Actions (CI)
 | kubeadm v1.32 | Cluster k8s |
 | Flannel | CNI (`10.244.0.0/16`) |
 | Helm v3 | Gerenciamento de charts |
-| Vault (Raft) | Secrets persistentes |
+| Vault (Raft) | Secrets persistentes + auto-unseal |
 | ArgoCD | GitOps — sync automático |
-| Prometheus | Coleta de métricas |
-| Grafana | Dashboards |
-| GitHub Actions | CI/CD pipeline |
-| Terraform | Infraestrutura como código |
+| kube-prometheus-stack | Prometheus + Grafana + AlertManager |
+| GitHub Actions | CI/CD pipeline (planejado) |
+| Terraform | Infraestrutura como código (planejado) |
 
-### Acesso externo
+### Acesso externo (mesmo Cloudflare Tunnel)
 | Subdomínio | Serviço | Host |
 |-----------|---------|------|
 | `panel.areis-solution.com` | Painel Flask | RPi Zero W |
-| `grafana.areis-solution.com` | Grafana | i9 / k8s |
-| `argocd.areis-solution.com` | ArgoCD | i9 / k8s |
+| `grafana.areis-solution.com` | Grafana | i9 / k8s NodePort |
+| `argocd.areis-solution.com` | ArgoCD | i9 / k8s NodePort |
 
 ---
 
@@ -123,9 +121,9 @@ git push → GitHub Actions (CI)
 | 3 | Cloudflare Tunnel + domínio próprio | ✅ |
 | 4 | Agente no i9 (registro de IP e serviços) | ✅ |
 | 5 | Kubernetes + Helm | ✅ |
-| 6 | Vault (Raft — storage persistente) | 🔄 em andamento |
-| 7 | ArgoCD (GitOps) | ⏳ |
-| 8 | Prometheus + Grafana (monitoramento) | ⏳ |
+| 6 | Vault (Raft + auto-unseal) | ✅ |
+| 7 | ArgoCD (GitOps) | ✅ |
+| 8 | Prometheus + Grafana (monitoramento) | ✅ |
 | 9 | GitHub Actions (CI/CD pipeline) | ⏳ |
 | 10 | Terraform (infraestrutura como código) | ⏳ |
 | 11 | Links dinâmicos de serviços no dashboard | ⏳ |
@@ -142,14 +140,16 @@ git push → GitHub Actions (CI)
 | Exposição | Cloudflare Tunnel | Grátis, HTTPS automático, sem abrir portas |
 | Múltiplos subdomínios | Mesmo tunnel, múltiplos hostnames | Grafana e ArgoCD acessíveis externamente sem custo extra |
 | Secrets | Vault (Raft) | Self-hosted, persistente, integração nativa k8s |
+| Vault unseal | Script systemd + chave em `/etc/vault` | Simples e gratuito; suficiente para homelab |
 | GitOps | ArgoCD | Padrão de mercado, UI intuitiva |
+| Monitoramento | kube-prometheus-stack | Prometheus + Grafana + dashboards prontos em um chart |
+| Storage k8s | StorageClass `local-storage` manual | Disco secundário sem provisioner dinâmico; PVs por serviço |
+| Pesado no i9, leve no RPi | ArgoCD/Prometheus/Grafana no i9 | RPi Zero W (512MB RAM, ARMv6) não suporta essas cargas |
 | CI/CD | GitHub Actions | Gratuito, integrado ao repo, ghcr.io para imagens |
 | IaC | Terraform | HCL simples, fácil migração para AWS, mais adotado no mercado |
-| Monitoramento | kube-prometheus-stack | Instala Prometheus + Grafana + dashboards prontos em um chart |
-| Armazenamento k8s | Disco secundário 526GB via symlink | Partição `/` de 29GB insuficiente para imagens |
+| Armazenamento k8s | Disco secundário 526GB via symlink/PV | Partição `/` de 29GB insuficiente para imagens e dados |
 | WoL | Via cabo ethernet (`enp5s0`) | Placa WiFi discreta perde energia no S5 |
 | IP fixo | Reserva DHCP por MAC | Certificados k8s e agente dependem de IPs estáveis |
-| IaC migração AWS | Terraform providers | Mesmo código, troca provider local → AWS |
 
 ---
 
@@ -157,8 +157,9 @@ git push → GitHub Actions (CI)
 
 | Documento | Descrição |
 |-----------|-----------|
-| [docs/checklist-k8s.md](docs/checklist-k8s.md) | Checklist completo de instalação do cluster |
-| [docs/post-mortem-2026-06-05.md](docs/post-mortem-2026-06-05.md) | Incidentes e lições aprendidas do setup inicial |
+| [docs/setup-completo.md](docs/setup-completo.md) | Guia completo do zero ao cluster funcional |
+| [docs/checklist-k8s.md](docs/checklist-k8s.md) | Checklist de instalação k8s + Vault + ArgoCD |
+| [docs/post-mortem-2026-06-05.md](docs/post-mortem-2026-06-05.md) | Incidentes e lições aprendidas |
 
 ---
 
@@ -208,24 +209,22 @@ sudo systemctl enable wol-panel
 sudo systemctl start wol-panel
 ```
 
-### Cloudflare Tunnel
+### Cloudflare Tunnel (multi-hostname)
 
 ```bash
-# Instalar cloudflared
 wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm -O cloudflared
 chmod +x cloudflared && sudo mv cloudflared /usr/local/bin/
 
-# Autenticar e criar tunnel
 cloudflared tunnel login
 cloudflared tunnel create wol-panel
 cloudflared tunnel route dns wol-panel panel.areis-solution.com
+cloudflared tunnel route dns wol-panel grafana.areis-solution.com
+cloudflared tunnel route dns wol-panel argocd.areis-solution.com
 
-# Configurar
 mkdir -p ~/.cloudflared
 cp cloudflared/config.yml.example ~/.cloudflared/config.yml
-nano ~/.cloudflared/config.yml  # preencher UUID e domínio
+nano ~/.cloudflared/config.yml  # preencher UUID, domínio e os 3 hostnames
 
-# Subir como serviço
 sudo cp cloudflared/wol-tunnel.service.example /etc/systemd/system/wol-tunnel.service
 sudo systemctl daemon-reload
 sudo systemctl enable wol-tunnel
@@ -236,7 +235,7 @@ sudo systemctl start wol-tunnel
 
 ## Instalação — PC Linux (Kubernetes)
 
-> Siga o [docs/checklist-k8s.md](docs/checklist-k8s.md) para a ordem correta.
+> Siga o [docs/checklist-k8s.md](docs/checklist-k8s.md) para a ordem correta — inclui Vault e ArgoCD.
 
 ```bash
 git clone https://github.com/andre-reis-hub/wol-rpi-k8s.git
@@ -259,6 +258,64 @@ sudo cp wol-agent.service.example /etc/systemd/system/wol-agent.service
 sudo systemctl daemon-reload
 sudo systemctl enable wol-agent
 sudo systemctl start wol-agent
+```
+
+### Vault (Raft + auto-unseal)
+
+```bash
+cd k8s/vault
+sudo mkdir -p /var/lib/rancher/vault && sudo chown 100:1000 /var/lib/rancher/vault
+kubectl apply -f pv.yaml
+helm install vault hashicorp/vault --namespace vault --create-namespace -f values.yaml
+
+# Primeira vez apenas
+kubectl exec -it vault-0 -n vault -- vault operator init -key-shares=1 -key-threshold=1
+# ⚠️ Salvar Unseal Key e Root Token em local seguro
+
+kubectl exec -it vault-0 -n vault -- vault operator unseal
+
+# Auto-unseal
+sudo mkdir -p /etc/vault && sudo chmod 700 /etc/vault
+sudo nano /etc/vault/unseal-key  # colar unseal key
+sudo chmod 400 /etc/vault/unseal-key
+sudo cp unseal.sh.example /etc/vault/unseal.sh
+sudo chmod 500 /etc/vault/unseal.sh
+# configurar serviço systemd vault-unseal — ver docs/checklist-k8s.md
+```
+
+### Prometheus + Grafana
+
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+kubectl create namespace monitoring
+
+kubectl apply -f k8s/monitoring/storageclass.yaml
+sudo mkdir -p /var/lib/rancher/prometheus && sudo chown 1000:2000 /var/lib/rancher/prometheus
+kubectl apply -f k8s/monitoring/prometheus-pv.yaml
+
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --set grafana.adminPassword='senha-temporaria' \
+  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=local-storage \
+  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=10Gi
+
+kubectl patch svc monitoring-grafana -n monitoring -p '{"spec": {"type": "NodePort"}}'
+```
+
+### ArgoCD
+
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "NodePort"}}'
+
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+
+curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+chmod +x argocd && sudo mv argocd /usr/local/bin/
+argocd login argocd.areis-solution.com --username admin --grpc-web
+argocd repo add https://github.com/andre-reis-hub/wol-rpi-k8s.git --username andre-reis-hub --password <PAT>
 ```
 
 ---
@@ -292,7 +349,9 @@ sudo systemctl enable wol.service
 
 - **IPs fixos:** reservar DHCP por MAC **antes** de instalar k8s
 - **Swap:** deve estar desabilitado — verificar com `free -h` antes do `kubeadm init`
-- **Disco:** containerd no disco secundário via symlink — partição `/` tem 29GB
-- **Vault:** modo Raft — secrets persistem no disco mesmo após reboot do pod
+- **Disco:** containerd, Vault e Prometheus no disco secundário via symlink/PV
+- **Vault:** Raft + auto-unseal — secrets persistem após reboot
+- **ArgoCD + PV ReadWriteOnce:** updates causam ~30s de downtime (Recreate strategy) — aceitável em homelab
+- **GPU NVIDIA:** mitigação de freezes via `nvidia.NVreg_EnableGpuFirmware=0` no GRUB
 - **Single-node:** taint removido com `kubectl taint nodes --all node-role.kubernetes.io/control-plane-`
 - **Boot time:** entre WoL e PC online leva 1–3 min
