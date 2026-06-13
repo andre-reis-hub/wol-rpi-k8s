@@ -1,0 +1,142 @@
+{
+  "version": 4,
+  "terraform_version": "1.15.6",
+  "serial": 6,
+  "lineage": "9de655b0-3378-8a28-b9ea-2855a6db854e",
+  "outputs": {},
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "kubernetes_persistent_volume",
+      "name": "prometheus_pv",
+      "provider": "provider[\"registry.terraform.io/hashicorp/kubernetes\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "prometheus-pv",
+            "metadata": [
+              {
+                "annotations": {},
+                "generation": 0,
+                "labels": {},
+                "name": "prometheus-pv",
+                "resource_version": "29949",
+                "uid": "d3b6e9e6-0c43-4e0b-a959-a8c2c3e95d0c"
+              }
+            ],
+            "spec": [
+              {
+                "access_modes": [
+                  "ReadWriteOnce"
+                ],
+                "capacity": {
+                  "storage": "10Gi"
+                },
+                "claim_ref": [
+                  {
+                    "name": "prometheus-monitoring-kube-prometheus-prometheus-db-prometheus-monitoring-kube-prometheus-prometheus-0",
+                    "namespace": "monitoring"
+                  }
+                ],
+                "mount_options": [],
+                "node_affinity": [
+                  {
+                    "required": [
+                      {
+                        "node_selector_term": [
+                          {
+                            "match_expressions": [
+                              {
+                                "key": "kubernetes.io/hostname",
+                                "operator": "In",
+                                "values": [
+                                  "andre-reis-hm570"
+                                ]
+                              }
+                            ],
+                            "match_fields": []
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "persistent_volume_reclaim_policy": "Retain",
+                "persistent_volume_source": [
+                  {
+                    "aws_elastic_block_store": [],
+                    "azure_disk": [],
+                    "azure_file": [],
+                    "ceph_fs": [],
+                    "cinder": [],
+                    "csi": [],
+                    "fc": [],
+                    "flex_volume": [],
+                    "flocker": [],
+                    "gce_persistent_disk": [],
+                    "glusterfs": [],
+                    "host_path": [],
+                    "iscsi": [],
+                    "local": [
+                      {
+                        "path": "/var/lib/rancher/prometheus"
+                      }
+                    ],
+                    "nfs": [],
+                    "photon_persistent_disk": [],
+                    "quobyte": [],
+                    "rbd": [],
+                    "vsphere_volume": []
+                  }
+                ],
+                "storage_class_name": "local-storage",
+                "volume_mode": "Filesystem"
+              }
+            ],
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDB9LCJzY2hlbWFfdmVyc2lvbiI6IjAifQ=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "kubernetes_storage_class",
+      "name": "local_storage",
+      "provider": "provider[\"registry.terraform.io/hashicorp/kubernetes\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "allow_volume_expansion": true,
+            "allowed_topologies": [],
+            "id": "local-storage",
+            "metadata": [
+              {
+                "annotations": {},
+                "generate_name": "",
+                "generation": 0,
+                "labels": {},
+                "name": "local-storage",
+                "resource_version": "46715",
+                "uid": "f4e5b83b-46a9-409e-8ccd-b5fc7dad8007"
+              }
+            ],
+            "mount_options": [],
+            "parameters": {},
+            "reclaim_policy": "Delete",
+            "storage_provisioner": "kubernetes.io/no-provisioner",
+            "volume_binding_mode": "WaitForFirstConsumer"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}
