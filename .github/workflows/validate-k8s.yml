@@ -24,7 +24,7 @@ jobs:
 
       - name: Validate YAML manifests
         run: |
-          find k8s -name '*.yaml' -not -path '*/dashboards/*' | xargs kubeconform -summary -ignore-missing-schemas
+          find k8s -name '*.yaml' -not -path '*/dashboards/*' -not -name 'values.yaml' | xargs kubeconform -summary -ignore-missing-schemas
 
       - name: Validate dashboard ConfigMaps (YAML syntax only)
         run: |
