@@ -8,7 +8,7 @@
     <header><strong>Status do PC</strong></header>
     <div id="status-box"
          hx-get="/status-fragment"
-         hx-trigger="load, every 5s"
+         hx-trigger="load, every 15s"
          hx-swap="innerHTML">
         <p aria-busy="true">Verificando...</p>
     </div>
@@ -18,7 +18,7 @@
     <header><strong>🎮 Servidor Palworld</strong></header>
     <div id="palworld-box"
          hx-get="/palworld-fragment"
-         hx-trigger="load, every 10s"
+         hx-trigger="load, every 30s"
          hx-swap="innerHTML">
         <p aria-busy="true">Consultando servidor...</p>
     </div>
