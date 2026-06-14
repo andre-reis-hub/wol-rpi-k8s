@@ -17,6 +17,10 @@ app.secret_key = os.environ['SECRET_KEY']
 
 USERNAME = os.environ['USERNAME']
 PASSWORD = os.environ['PASSWORD']
+
+GUEST_USERNAME = os.environ.get('GUEST_USERNAME', '')
+GUEST_PASSWORD = os.environ.get('GUEST_PASSWORD', '')
+
 PC_MAC = os.environ['PC_MAC']
 PC_LOCAL_IP = os.environ['PC_LOCAL_IP']
 REGISTER_TOKEN = os.environ.get('REGISTER_TOKEN', '')
@@ -59,7 +63,6 @@ def pc_online():
 
 
 def get_palworld_metrics():
-    """Consulta a REST API do Palworld. Retorna dict com metricas ou None."""
     if not PALWORLD_API_URL:
         return None
     try:
@@ -101,11 +104,27 @@ def login_required(f):
     return decorated
 
 
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if session.get('role') != 'admin':
+            return '<p><strong class="status-offline">Acesso negado: apenas administrador.</strong></p>', 403
+        return f(*args, **kwargs)
+    return decorated
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        if request.form['username'] == USERNAME and request.form['password'] == PASSWORD:
+        user = request.form['username']
+        pw = request.form['password']
+        if user == USERNAME and pw == PASSWORD:
             session['user'] = USERNAME
+            session['role'] = 'admin'
+            return redirect(url_for('dashboard'))
+        if GUEST_USERNAME and user == GUEST_USERNAME and pw == GUEST_PASSWORD:
+            session['user'] = GUEST_USERNAME
+            session['role'] = 'guest'
             return redirect(url_for('dashboard'))
         return render_template('login.html', error='Credenciais inválidas')
     return render_template('login.html')
@@ -130,7 +149,8 @@ def status_fragment():
     online = pc_online()
     state = load_state()
     waking = not online and is_waking(state)
-    return render_template('_status.html', online=online, waking=waking, state=state)
+    is_admin = session.get('role') == 'admin'
+    return render_template('_status.html', online=online, waking=waking, state=state, is_admin=is_admin)
 
 
 @app.route('/palworld-fragment')
@@ -154,8 +174,8 @@ def wol():
 
 @app.route('/shutdown', methods=['POST'])
 @login_required
+@admin_required
 def shutdown():
-    """Desliga o i9 remotamente via SSH."""
     try:
         result = subprocess.run(
             ['ssh', '-o', 'ConnectTimeout=5', '-o', 'StrictHostKeyChecking=no',

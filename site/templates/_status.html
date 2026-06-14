@@ -31,6 +31,7 @@
 </small></p>
 {% endif %}
 
+{% if is_admin %}
 <form hx-post="/shutdown"
       hx-target="#status-box"
       hx-swap="innerHTML"
@@ -38,6 +39,11 @@
       style="margin-top: 0.75rem;">
     <button type="submit" class="outline secondary">⏻ Desligar PC</button>
 </form>
+{% else %}
+<p><small style="color: var(--pico-muted-color);">
+    Apenas o administrador pode desligar o PC.
+</small></p>
+{% endif %}
 
 {% elif waking %}
 
