@@ -5,6 +5,7 @@ import subprocess
 from datetime import datetime
 from functools import wraps
 
+import requests
 import wakeonlan
 from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, request, session, url_for
@@ -19,6 +20,11 @@ PASSWORD = os.environ['PASSWORD']
 PC_MAC = os.environ['PC_MAC']
 PC_LOCAL_IP = os.environ['PC_LOCAL_IP']
 REGISTER_TOKEN = os.environ.get('REGISTER_TOKEN', '')
+
+PC_SSH_USER = os.environ.get('PC_SSH_USER', 'andre-reis')
+PALWORLD_API_URL = os.environ.get('PALWORLD_API_URL', '')
+PALWORLD_API_USER = os.environ.get('PALWORLD_API_USER', 'admin')
+PALWORLD_API_PASS = os.environ.get('PALWORLD_API_PASS', '')
 
 WAKING_TIMEOUT = 300
 
@@ -50,6 +56,23 @@ def pc_online():
         capture_output=True,
     )
     return result.returncode == 0
+
+
+def get_palworld_metrics():
+    """Consulta a REST API do Palworld. Retorna dict com metricas ou None."""
+    if not PALWORLD_API_URL:
+        return None
+    try:
+        resp = requests.get(
+            f'{PALWORLD_API_URL}/v1/api/metrics',
+            auth=(PALWORLD_API_USER, PALWORLD_API_PASS),
+            timeout=3,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception:
+        pass
+    return None
 
 
 def get_tunnel_url():
@@ -110,6 +133,14 @@ def status_fragment():
     return render_template('_status.html', online=online, waking=waking, state=state)
 
 
+@app.route('/palworld-fragment')
+@login_required
+def palworld_fragment():
+    online = pc_online()
+    metrics = get_palworld_metrics() if online else None
+    return render_template('_palworld.html', metrics=metrics, online=online)
+
+
 @app.route('/wol', methods=['POST'])
 @login_required
 def wol():
@@ -119,6 +150,23 @@ def wol():
     state['waking_since'] = datetime.utcnow().isoformat()
     save_state(state)
     return ''
+
+
+@app.route('/shutdown', methods=['POST'])
+@login_required
+def shutdown():
+    """Desliga o i9 remotamente via SSH."""
+    try:
+        result = subprocess.run(
+            ['ssh', '-o', 'ConnectTimeout=5', '-o', 'StrictHostKeyChecking=no',
+             f'{PC_SSH_USER}@{PC_LOCAL_IP}', 'sudo shutdown now'],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            return '<p><strong class="status-waking">⏻ Comando de desligamento enviado.</strong></p>'
+        return f'<p><strong class="status-offline">Erro ao desligar: {result.stderr[:100]}</strong></p>'
+    except Exception as e:
+        return f'<p><strong class="status-offline">Erro: {str(e)[:100]}</strong></p>'
 
 
 @app.route('/api/register', methods=['POST'])

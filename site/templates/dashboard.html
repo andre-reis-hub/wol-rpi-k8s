@@ -15,6 +15,16 @@
 </article>
 
 <article>
+    <header><strong>🎮 Servidor Palworld</strong></header>
+    <div id="palworld-box"
+         hx-get="/palworld-fragment"
+         hx-trigger="load, every 10s"
+         hx-swap="innerHTML">
+        <p aria-busy="true">Consultando servidor...</p>
+    </div>
+</article>
+
+<article>
     <header><strong>🌐 Acesso Externo</strong></header>
     {% if tunnel_url %}
     <p>

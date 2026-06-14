@@ -31,6 +31,14 @@
 </small></p>
 {% endif %}
 
+<form hx-post="/shutdown"
+      hx-target="#status-box"
+      hx-swap="innerHTML"
+      hx-confirm="Tem certeza que deseja desligar o PC?"
+      style="margin-top: 0.75rem;">
+    <button type="submit" class="outline secondary">⏻ Desligar PC</button>
+</form>
+
 {% elif waking %}
 
 <p><strong class="status-waking">⏳ Ligando...</strong></p>

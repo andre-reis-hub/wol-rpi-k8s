@@ -1,0 +1,35 @@
+{% if not online %}
+<p><small style="color: var(--pico-muted-color);">PC offline — servidor indisponível.</small></p>
+{% elif metrics %}
+<p>
+    <strong class="status-online">● Servidor Online</strong>
+</p>
+<div class="grid">
+    <div>
+        <small style="color: var(--pico-muted-color);">Jogadores</small>
+        <p style="font-size: 1.5rem; margin: 0;">
+            <strong>{{ metrics.currentplayernum }}/{{ metrics.maxplayernum }}</strong>
+        </p>
+    </div>
+    <div>
+        <small style="color: var(--pico-muted-color);">FPS do servidor</small>
+        <p style="font-size: 1.5rem; margin: 0;">
+            <strong>{{ metrics.serverfps }}</strong>
+        </p>
+    </div>
+    <div>
+        <small style="color: var(--pico-muted-color);">Dias no mundo</small>
+        <p style="font-size: 1.5rem; margin: 0;">
+            <strong>{{ metrics.days }}</strong>
+        </p>
+    </div>
+</div>
+<p><small style="color: var(--pico-muted-color);">
+    Uptime: {{ (metrics.uptime // 3600) }}h {{ ((metrics.uptime % 3600) // 60) }}m
+    · Bases: {{ metrics.basecampnum }}
+</small></p>
+{% else %}
+<p><small style="color: var(--pico-muted-color);">
+    Servidor Palworld não está respondendo (pode estar iniciando ou desligado).
+</small></p>
+{% endif %}
