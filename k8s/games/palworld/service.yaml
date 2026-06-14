@@ -18,3 +18,8 @@ spec:
       targetPort: 27015
       protocol: UDP
       nodePort: 30015
+    - name: restapi
+      port: 8212
+      targetPort: 8212
+      protocol: TCP
+      nodePort: 30212
