@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: abiotic-factor-server
+  namespace: abiotic-factor
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: abiotic-factor-server
+  template:
+    metadata:
+      labels:
+        app: abiotic-factor-server
+    spec:
+      containers:
+        - name: abiotic-factor-server
+          image: andrewsav/abiotic-factor:latest
+          ports:
+            - containerPort: 7777
+              protocol: UDP
+            - containerPort: 27015
+              protocol: UDP
+          env:
+            # NOTA: a senha (-ServerPassword=) NAO esta aqui de proposito, para
+            # nao expor no Git. Ela e adicionada via 'kubectl set env' apos o
+            # deploy (ver README.md, Opcao A).
+            - name: args
+              value: >-
+                -userdir=/server/AbioticFactor/Saved
+                -newconsole
+                -useperfthreads
+                -NoAsyncLoadingThread
+                -UseMultithreadForDS
+                -MaxServerPlayers=6
+                -PORT=7777
+                -QUERYPORT=27015
+                -ServerName=Servidor-do-Andre-Abiotic
+                -SaveName=Mundo
+                -SteamServerName=Servidor-do-Andre-Abiotic
+          resources:
+            requests:
+              memory: "6Gi"
+              cpu: "2000m"
+            limits:
+              memory: "12Gi"
+              cpu: "6000m"
+          volumeMounts:
+            - name: abiotic-factor-data
+              mountPath: /server
+      volumes:
+        - name: abiotic-factor-data
+          persistentVolumeClaim:
+            claimName: abiotic-factor-pvc
