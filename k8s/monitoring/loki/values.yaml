@@ -1,0 +1,35 @@
+# loki-stack: Loki + Promtail, sem Grafana embutido
+# (usamos o Grafana que ja existe no kube-prometheus-stack)
+
+loki:
+  enabled: true
+  isDefault: false
+  persistence:
+    enabled: true
+    existingClaim: loki-pvc
+  config:
+    limits_config:
+      retention_period: 4320h   # 180 dias (6 meses)
+    table_manager:
+      retention_deletes_enabled: true
+      retention_period: 4320h   # 180 dias (6 meses)
+    # compactor cuida da remocao efetiva dos logs antigos
+    compactor:
+      working_directory: /data/loki/compactor
+      shared_store: filesystem
+      retention_enabled: true
+
+promtail:
+  enabled: true
+  config:
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+
+grafana:
+  enabled: false
+
+prometheus:
+  enabled: false
+
+fluent-bit:
+  enabled: false

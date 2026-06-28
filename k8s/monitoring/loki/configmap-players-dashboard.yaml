@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-game-players
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  game-players.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "panels": [
+        {
+          "title": "Conexões Palworld (entradas/saídas)",
+          "type": "logs",
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+          "targets": [
+            {
+              "expr": "{namespace=\"palworld\"} |~ \"(?i)(join|connect|logged in|left|disconnect|player)\"",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Conexões Abiotic Factor (entradas/saídas)",
+          "type": "logs",
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 10 },
+          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+          "targets": [
+            {
+              "expr": "{namespace=\"abiotic-factor\"} |~ \"(?i)(join|connect|login|left|disconnect|player| banished|entered)\"",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Taxa de eventos de conexão (5m)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "targets": [
+            {
+              "expr": "sum by (namespace) (count_over_time({namespace=~\"palworld|abiotic-factor\"} |~ \"(?i)(join|connect|login|player)\" [5m]))",
+              "legendFormat": "{{namespace}}",
+              "refId": "A"
+            }
+          ]
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["wol-rpi-k8s", "game-servers", "loki", "players"],
+      "templating": {
+        "list": [
+          {
+            "name": "DS_LOKI",
+            "type": "datasource",
+            "query": "loki",
+            "current": {}
+          }
+        ]
+      },
+      "time": { "from": "now-6h", "to": "now" },
+      "title": "Game Servers — Jogadores e Conexões (Loki)",
+      "uid": "game-players-loki",
+      "version": 1
+    }
