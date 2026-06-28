@@ -12,40 +12,53 @@ data:
       "editable": true,
       "panels": [
         {
-          "title": "Conexões Palworld (entradas/saídas)",
+          "title": "Palworld — Entradas e Saídas de Jogadores",
           "type": "logs",
-          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
           "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-          "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+          "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true },
           "targets": [
             {
-              "expr": "{namespace=\"palworld\"} |~ \"(?i)(join|connect|logged in|left|disconnect|player)\"",
+              "expr": "{namespace=\"palworld\"} |~ \"joined the server|left the server\"",
               "refId": "A"
             }
           ]
         },
         {
-          "title": "Conexões Abiotic Factor (entradas/saídas)",
+          "title": "Abiotic Factor — Entradas e Saídas de Jogadores",
           "type": "logs",
-          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 10 },
+          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
           "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-          "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+          "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true },
           "targets": [
             {
-              "expr": "{namespace=\"abiotic-factor\"} |~ \"(?i)(join|connect|login|left|disconnect|player| banished|entered)\"",
+              "expr": "{namespace=\"abiotic-factor\"} |~ \"entered the facility|left the facility\"",
               "refId": "A"
             }
           ]
         },
         {
-          "title": "Taxa de eventos de conexão (5m)",
+          "title": "Palworld — Jogadores conectando (taxa por 10m)",
           "type": "timeseries",
-          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
           "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
           "targets": [
             {
-              "expr": "sum by (namespace) (count_over_time({namespace=~\"palworld|abiotic-factor\"} |~ \"(?i)(join|connect|login|player)\" [5m]))",
-              "legendFormat": "{{namespace}}",
+              "expr": "sum(count_over_time({namespace=\"palworld\"} |= \"joined the server\" [10m]))",
+              "legendFormat": "entradas",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Abiotic Factor — Jogadores conectando (taxa por 10m)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "targets": [
+            {
+              "expr": "sum(count_over_time({namespace=\"abiotic-factor\"} |= \"entered the facility\" [10m]))",
+              "legendFormat": "entradas",
               "refId": "A"
             }
           ]
@@ -63,8 +76,8 @@ data:
           }
         ]
       },
-      "time": { "from": "now-6h", "to": "now" },
+      "time": { "from": "now-24h", "to": "now" },
       "title": "Game Servers — Jogadores e Conexões (Loki)",
       "uid": "game-players-loki",
-      "version": 1
+      "version": 2
     }
