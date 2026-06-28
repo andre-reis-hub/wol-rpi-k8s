@@ -6,9 +6,14 @@ from datetime import datetime
 from functools import wraps
 
 import requests
+import urllib3
 import wakeonlan
 from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, request, session, url_for
+
+# A API do k8s usa certificado proprio; carregamos o CA do .env (caminho).
+# Se preferir, pode desabilitar verificacao, mas vamos fazer certo com o CA.
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 load_dotenv()
 
@@ -17,22 +22,49 @@ app.secret_key = os.environ['SECRET_KEY']
 
 USERNAME = os.environ['USERNAME']
 PASSWORD = os.environ['PASSWORD']
-
 GUEST_USERNAME = os.environ.get('GUEST_USERNAME', '')
 GUEST_PASSWORD = os.environ.get('GUEST_PASSWORD', '')
 
 PC_MAC = os.environ['PC_MAC']
 PC_LOCAL_IP = os.environ['PC_LOCAL_IP']
 REGISTER_TOKEN = os.environ.get('REGISTER_TOKEN', '')
-
 PC_SSH_USER = os.environ.get('PC_SSH_USER', 'andre-reis')
+
+# Endereco publico/dominio para montar a string de conexao dos jogos
+PUBLIC_HOST = os.environ.get('PUBLIC_HOST', PC_LOCAL_IP)
+
+# API do Kubernetes
+K8S_API = os.environ.get('K8S_API', 'https://192.168.15.14:6443')
+K8S_TOKEN = os.environ.get('K8S_TOKEN', '')
+K8S_CA_CERT = os.environ.get('K8S_CA_CERT', '')  # caminho para o ca.crt
+
+# Palworld REST API (para metricas)
 PALWORLD_API_URL = os.environ.get('PALWORLD_API_URL', '')
 PALWORLD_API_USER = os.environ.get('PALWORLD_API_USER', 'admin')
 PALWORLD_API_PASS = os.environ.get('PALWORLD_API_PASS', '')
 
 WAKING_TIMEOUT = 300
-
 STATE_FILE = os.path.join(os.path.dirname(__file__), 'state.json')
+
+# Catalogo de jogos gerenciados pelo painel
+GAMES = {
+    'palworld': {
+        'nome': 'Palworld',
+        'emoji': '🎮',
+        'namespace': 'palworld',
+        'deployment': 'palworld-server',
+        'porta_conexao': 30211,
+        'tem_metricas': True,
+    },
+    'abiotic-factor': {
+        'nome': 'Abiotic Factor',
+        'emoji': '🧪',
+        'namespace': 'abiotic-factor',
+        'deployment': 'abiotic-factor-server',
+        'porta_conexao': 30777,
+        'tem_metricas': False,
+    },
+}
 
 
 def load_state():
@@ -55,11 +87,45 @@ def is_waking(state):
 
 
 def pc_online():
-    result = subprocess.run(
-        ['ping', '-c', '1', '-W', '1', PC_LOCAL_IP],
-        capture_output=True,
-    )
+    result = subprocess.run(['ping', '-c', '1', '-W', '1', PC_LOCAL_IP], capture_output=True)
     return result.returncode == 0
+
+
+def _k8s_headers():
+    return {'Authorization': f'Bearer {K8S_TOKEN}'}
+
+
+def _k8s_verify():
+    # Usa o CA do cluster se fornecido; senao, nao verifica (LAN).
+    return K8S_CA_CERT if K8S_CA_CERT and os.path.exists(K8S_CA_CERT) else False
+
+
+def get_game_replicas(game):
+    """Retorna numero de replicas desejadas do deployment (0 = desligado)."""
+    g = GAMES[game]
+    try:
+        url = f"{K8S_API}/apis/apps/v1/namespaces/{g['namespace']}/deployments/{g['deployment']}"
+        r = requests.get(url, headers=_k8s_headers(), verify=_k8s_verify(), timeout=4)
+        if r.status_code == 200:
+            data = r.json()
+            return data.get('spec', {}).get('replicas', 0)
+    except Exception:
+        pass
+    return None
+
+
+def scale_game(game, replicas):
+    """Escala o deployment do jogo (0 = desliga, 1 = liga)."""
+    g = GAMES[game]
+    try:
+        url = f"{K8S_API}/apis/apps/v1/namespaces/{g['namespace']}/deployments/{g['deployment']}/scale"
+        headers = _k8s_headers()
+        headers['Content-Type'] = 'application/merge-patch+json'
+        body = json.dumps({'spec': {'replicas': replicas}})
+        r = requests.patch(url, headers=headers, data=body, verify=_k8s_verify(), timeout=6)
+        return r.status_code in (200, 201)
+    except Exception:
+        return False
 
 
 def get_palworld_metrics():
@@ -82,16 +148,6 @@ def get_tunnel_url():
     url = os.environ.get('TUNNEL_URL')
     if url:
         return url
-    try:
-        result = subprocess.run(
-            ['journalctl', '-u', 'wol-tunnel', '--no-pager', '-o', 'cat'],
-            capture_output=True, text=True, timeout=5
-        )
-        matches = re.findall(r'https://[a-z0-9-]+\.trycloudflare\.com', result.stdout)
-        if matches:
-            return matches[-1]
-    except Exception:
-        pass
     return None
 
 
@@ -139,8 +195,7 @@ def logout():
 @app.route('/')
 @login_required
 def dashboard():
-    tunnel_url = get_tunnel_url()
-    return render_template('dashboard.html', tunnel_url=tunnel_url)
+    return render_template('dashboard.html', games=GAMES, tunnel_url=get_tunnel_url())
 
 
 @app.route('/status-fragment')
@@ -153,12 +208,42 @@ def status_fragment():
     return render_template('_status.html', online=online, waking=waking, state=state, is_admin=is_admin)
 
 
-@app.route('/palworld-fragment')
+@app.route('/game-fragment/<game>')
 @login_required
-def palworld_fragment():
+def game_fragment(game):
+    if game not in GAMES:
+        return '', 404
+    g = GAMES[game]
     online = pc_online()
-    metrics = get_palworld_metrics() if online else None
-    return render_template('_palworld.html', metrics=metrics, online=online)
+    replicas = get_game_replicas(game) if online else None
+    ligado = bool(replicas) if replicas is not None else False
+    metrics = get_palworld_metrics() if (online and ligado and g['tem_metricas']) else None
+    endereco = f"{PUBLIC_HOST}:{g['porta_conexao']}"
+    is_admin = session.get('role') == 'admin'
+    return render_template(
+        '_game.html',
+        game=game, g=g, online=online, ligado=ligado,
+        replicas=replicas, metrics=metrics, endereco=endereco, is_admin=is_admin,
+    )
+
+
+@app.route('/game/<game>/start', methods=['POST'])
+@login_required
+def game_start(game):
+    if game not in GAMES:
+        return '', 404
+    scale_game(game, 1)
+    return game_fragment(game)
+
+
+@app.route('/game/<game>/stop', methods=['POST'])
+@login_required
+@admin_required
+def game_stop(game):
+    if game not in GAMES:
+        return '', 404
+    scale_game(game, 0)
+    return game_fragment(game)
 
 
 @app.route('/wol', methods=['POST'])

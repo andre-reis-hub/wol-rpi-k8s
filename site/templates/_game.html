@@ -1,0 +1,41 @@
+{% if not online %}
+<p><small style="color: var(--pico-muted-color);">PC offline — ligue o PC primeiro.</small></p>
+
+{% elif ligado %}
+<p><strong class="status-online">● Servidor Online</strong></p>
+
+{% if metrics %}
+<p>
+    <strong>{{ metrics.currentplayernum }}/{{ metrics.maxplayernum }}</strong> jogadores
+    · {{ metrics.serverfps }} FPS
+    · dia {{ metrics.days }}
+</p>
+{% endif %}
+
+<p style="margin-bottom: 0.25rem;"><small style="color: var(--pico-muted-color);">Endereço de conexão:</small></p>
+<div style="display: flex; gap: 0.5rem; align-items: center;">
+    <code id="addr-{{ game }}" style="font-size: 1.1rem;">{{ endereco }}</code>
+    <button class="outline" style="margin: 0; padding: 0.2rem 0.6rem;"
+            onclick="copyAddr('{{ game }}')">📋</button>
+    <span id="copied-{{ game }}" style="color: #2dc653; display: none;">✓</span>
+</div>
+
+{% if is_admin %}
+<form hx-post="/game/{{ game }}/stop"
+      hx-target="#game-box-{{ game }}"
+      hx-swap="innerHTML"
+      hx-confirm="Desligar o servidor de {{ g.nome }}?"
+      style="margin-top: 0.75rem;">
+    <button type="submit" class="outline secondary">⏻ Desligar servidor</button>
+</form>
+{% endif %}
+
+{% else %}
+<p><strong class="status-offline">○ Servidor Desligado</strong></p>
+<form hx-post="/game/{{ game }}/start"
+      hx-target="#game-box-{{ game }}"
+      hx-swap="innerHTML"
+      style="margin-top: 0.75rem;">
+    <button type="submit">▶ Ligar servidor</button>
+</form>
+{% endif %}

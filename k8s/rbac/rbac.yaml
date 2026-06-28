@@ -1,0 +1,79 @@
+# RBAC para o painel (RPi) escalar os deployments dos game servers
+# Permissao MINIMA: somente get/patch de deployments e get de pods,
+# apenas nos namespaces dos jogos. Nada alem disso.
+
+---
+# ServiceAccount dedicado ao painel
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: panel-controller
+  namespace: kube-system
+---
+# Role no namespace palworld
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: game-scaler
+  namespace: palworld
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+# Role no namespace abiotic-factor
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: game-scaler
+  namespace: abiotic-factor
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+# Vincula o ServiceAccount a Role no namespace palworld
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: panel-game-scaler
+  namespace: palworld
+subjects:
+  - kind: ServiceAccount
+    name: panel-controller
+    namespace: kube-system
+roleRef:
+  kind: Role
+  name: game-scaler
+  apiGroup: rbac.authorization.k8s.io
+---
+# Vincula o ServiceAccount a Role no namespace abiotic-factor
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: panel-game-scaler
+  namespace: abiotic-factor
+subjects:
+  - kind: ServiceAccount
+    name: panel-controller
+    namespace: kube-system
+roleRef:
+  kind: Role
+  name: game-scaler
+  apiGroup: rbac.authorization.k8s.io
+---
+# Token de longa duracao para o ServiceAccount (k8s 1.24+)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: panel-controller-token
+  namespace: kube-system
+  annotations:
+    kubernetes.io/service-account.name: panel-controller
+type: kubernetes.io/service-account-token

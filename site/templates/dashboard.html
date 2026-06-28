@@ -14,41 +14,30 @@
     </div>
 </article>
 
+{% for game_id, g in games.items() %}
 <article>
-    <header><strong>🎮 Servidor Palworld</strong></header>
-    <div id="palworld-box"
-         hx-get="/palworld-fragment"
+    <header><strong>{{ g.emoji }} {{ g.nome }}</strong></header>
+    <div id="game-box-{{ game_id }}"
+         hx-get="/game-fragment/{{ game_id }}"
          hx-trigger="load, every 30s"
          hx-swap="innerHTML">
-        <p aria-busy="true">Consultando servidor...</p>
+        <p aria-busy="true">Consultando...</p>
     </div>
 </article>
+{% endfor %}
 
+{% if tunnel_url %}
 <article>
-    <header><strong>🌐 Acesso Externo</strong></header>
-    {% if tunnel_url %}
-    <p>
-        <a href="{{ tunnel_url }}" target="_blank" rel="noopener" id="tunnel-link">
-            {{ tunnel_url }}
-        </a>
-    </p>
-    <button class="outline" onclick="copyTunnel()">📋 Copiar URL</button>
-    <span id="copy-feedback" style="margin-left: 0.5rem; color: #2dc653; display: none;">✓ Copiado!</span>
-    {% else %}
-    <p><small style="color: var(--pico-muted-color);">
-        Tunnel não encontrado. Verifique se o serviço <code>wol-tunnel</code> está ativo.
-    </small></p>
-    <p><small>
-        <code>sudo systemctl status wol-tunnel</code>
-    </small></p>
-    {% endif %}
+    <header><strong>🌐 Painel (acesso externo)</strong></header>
+    <p><a href="{{ tunnel_url }}" target="_blank" rel="noopener">{{ tunnel_url }}</a></p>
 </article>
+{% endif %}
 
 <script>
-function copyTunnel() {
-    const url = document.getElementById('tunnel-link').href;
-    navigator.clipboard.writeText(url).then(() => {
-        const fb = document.getElementById('copy-feedback');
+function copyAddr(game) {
+    const txt = document.getElementById('addr-' + game).innerText;
+    navigator.clipboard.writeText(txt).then(() => {
+        const fb = document.getElementById('copied-' + game);
         fb.style.display = 'inline';
         setTimeout(() => fb.style.display = 'none', 2000);
     });
