@@ -11,8 +11,12 @@ import wakeonlan
 from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, request, session, url_for
 
-# A API do k8s usa certificado proprio; carregamos o CA do .env (caminho).
-# Se preferir, pode desabilitar verificacao, mas vamos fazer certo com o CA.
+try:
+    import a2s
+    A2S_AVAILABLE = True
+except ImportError:
+    A2S_AVAILABLE = False
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 load_dotenv()
@@ -30,23 +34,17 @@ PC_LOCAL_IP = os.environ['PC_LOCAL_IP']
 REGISTER_TOKEN = os.environ.get('REGISTER_TOKEN', '')
 PC_SSH_USER = os.environ.get('PC_SSH_USER', 'andre-reis')
 
-# Endereco publico/dominio para montar a string de conexao dos jogos
 PUBLIC_HOST = os.environ.get('PUBLIC_HOST', PC_LOCAL_IP)
 
-# API do Kubernetes
 K8S_API = os.environ.get('K8S_API', 'https://192.168.15.14:6443')
 K8S_TOKEN = os.environ.get('K8S_TOKEN', '')
-K8S_CA_CERT = os.environ.get('K8S_CA_CERT', '')  # caminho para o ca.crt
-
-# Palworld REST API (para metricas)
-PALWORLD_API_URL = os.environ.get('PALWORLD_API_URL', '')
-PALWORLD_API_USER = os.environ.get('PALWORLD_API_USER', 'admin')
-PALWORLD_API_PASS = os.environ.get('PALWORLD_API_PASS', '')
+K8S_CA_CERT = os.environ.get('K8S_CA_CERT', '')
 
 WAKING_TIMEOUT = 300
 STATE_FILE = os.path.join(os.path.dirname(__file__), 'state.json')
 
-# Catalogo de jogos gerenciados pelo painel
+# Catalogo de jogos. query_host/query_port usados para A2S (Steam Query).
+# A query e feita no IP LOCAL do i9 (o RPi esta na mesma rede).
 GAMES = {
     'palworld': {
         'nome': 'Palworld',
@@ -54,7 +52,7 @@ GAMES = {
         'namespace': 'palworld',
         'deployment': 'palworld-server',
         'porta_conexao': 30211,
-        'tem_metricas': True,
+        'query_port': 30015,
     },
     'abiotic-factor': {
         'nome': 'Abiotic Factor',
@@ -62,7 +60,7 @@ GAMES = {
         'namespace': 'abiotic-factor',
         'deployment': 'abiotic-factor-server',
         'porta_conexao': 30777,
-        'tem_metricas': False,
+        'query_port': 30016,
     },
 }
 
@@ -96,26 +94,22 @@ def _k8s_headers():
 
 
 def _k8s_verify():
-    # Usa o CA do cluster se fornecido; senao, nao verifica (LAN).
     return K8S_CA_CERT if K8S_CA_CERT and os.path.exists(K8S_CA_CERT) else False
 
 
 def get_game_replicas(game):
-    """Retorna numero de replicas desejadas do deployment (0 = desligado)."""
     g = GAMES[game]
     try:
         url = f"{K8S_API}/apis/apps/v1/namespaces/{g['namespace']}/deployments/{g['deployment']}"
         r = requests.get(url, headers=_k8s_headers(), verify=_k8s_verify(), timeout=4)
         if r.status_code == 200:
-            data = r.json()
-            return data.get('spec', {}).get('replicas', 0)
+            return r.json().get('spec', {}).get('replicas', 0)
     except Exception:
         pass
     return None
 
 
 def scale_game(game, replicas):
-    """Escala o deployment do jogo (0 = desliga, 1 = liga)."""
     g = GAMES[game]
     try:
         url = f"{K8S_API}/apis/apps/v1/namespaces/{g['namespace']}/deployments/{g['deployment']}/scale"
@@ -128,27 +122,26 @@ def scale_game(game, replicas):
         return False
 
 
-def get_palworld_metrics():
-    if not PALWORLD_API_URL:
+def get_a2s_info(game):
+    """Consulta Steam Query (A2S) na porta de query do jogo.
+    Retorna dict com players/max_players/server_name ou None."""
+    if not A2S_AVAILABLE:
         return None
+    g = GAMES[game]
     try:
-        resp = requests.get(
-            f'{PALWORLD_API_URL}/v1/api/metrics',
-            auth=(PALWORLD_API_USER, PALWORLD_API_PASS),
-            timeout=3,
-        )
-        if resp.status_code == 200:
-            return resp.json()
+        addr = (PC_LOCAL_IP, g['query_port'])
+        info = a2s.info(addr, timeout=3)
+        return {
+            'players': info.player_count,
+            'max_players': info.max_players,
+            'server_name': info.server_name,
+        }
     except Exception:
-        pass
-    return None
+        return None
 
 
 def get_tunnel_url():
-    url = os.environ.get('TUNNEL_URL')
-    if url:
-        return url
-    return None
+    return os.environ.get('TUNNEL_URL')
 
 
 def login_required(f):
@@ -217,13 +210,13 @@ def game_fragment(game):
     online = pc_online()
     replicas = get_game_replicas(game) if online else None
     ligado = bool(replicas) if replicas is not None else False
-    metrics = get_palworld_metrics() if (online and ligado and g['tem_metricas']) else None
+    info = get_a2s_info(game) if (online and ligado) else None
     endereco = f"{PUBLIC_HOST}:{g['porta_conexao']}"
     is_admin = session.get('role') == 'admin'
     return render_template(
         '_game.html',
         game=game, g=g, online=online, ligado=ligado,
-        replicas=replicas, metrics=metrics, endereco=endereco, is_admin=is_admin,
+        info=info, endereco=endereco, is_admin=is_admin,
     )
 
 

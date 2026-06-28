@@ -4,12 +4,12 @@
 {% elif ligado %}
 <p><strong class="status-online">● Servidor Online</strong></p>
 
-{% if metrics %}
+{% if info %}
 <p>
-    <strong>{{ metrics.currentplayernum }}/{{ metrics.maxplayernum }}</strong> jogadores
-    · {{ metrics.serverfps }} FPS
-    · dia {{ metrics.days }}
+    <strong>{{ info.players }}/{{ info.max_players }}</strong> jogadores online
 </p>
+{% else %}
+<p><small style="color: var(--pico-muted-color);">Servidor iniciando ou sem resposta de query ainda...</small></p>
 {% endif %}
 
 <p style="margin-bottom: 0.25rem;"><small style="color: var(--pico-muted-color);">Endereço de conexão:</small></p>
