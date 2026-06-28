@@ -60,8 +60,8 @@ GAMES = {
         'log_join': 'joined the server',
         'log_leave': 'left the server',
         # regex para extrair o nome: "Nome joined the server."
-        'log_name_regex': r'(\\w[\\w .-]*) joined the server',
-        'log_leave_name_regex': r'(\\w[\\w .-]*) left the server',
+        'log_name_regex': r'(\w[\w .-]*) joined the server',
+        'log_leave_name_regex': r'(\w[\w .-]*) left the server',
     },
     'abiotic-factor': {
         'nome': 'Abiotic Factor',
@@ -72,8 +72,8 @@ GAMES = {
         'fonte_players': 'loki',
         'log_join': 'entered the facility',
         'log_leave': 'exited the facility',
-        'log_name_regex': r'CHAT LOG:\\s+(.+?) has entered the facility',
-        'log_leave_name_regex': r'CHAT LOG:\\s+(.+?) has exited the facility',
+        'log_name_regex': r'CHAT LOG:\s+(.+?) has entered the facility',
+        'log_leave_name_regex': r'CHAT LOG:\s+(.+?) has exited the facility',
     },
 }
 
