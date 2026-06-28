@@ -32,7 +32,7 @@ data:
           "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true },
           "targets": [
             {
-              "expr": "{namespace=\"abiotic-factor\"} |~ \"entered the facility|left the facility\"",
+              "expr": "{namespace=\"abiotic-factor\"} |~ \"entered the facility|exited the facility\"",
               "refId": "A"
             }
           ]
