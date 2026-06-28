@@ -1,0 +1,21 @@
+# Expoe a API HTTP do Loki via NodePort para o painel (RPi) consultar.
+# O Loki ja tem um Service ClusterIP "loki:3100" interno; este adiciona
+# um NodePort para acesso a partir de fora do cluster (o RPi).
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-nodeport
+  namespace: monitoring
+  labels:
+    app: loki
+spec:
+  type: NodePort
+  selector:
+    app: loki
+    release: loki
+  ports:
+    - name: http
+      port: 3100
+      targetPort: 3100
+      protocol: TCP
+      nodePort: 31100
