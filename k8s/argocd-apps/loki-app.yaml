@@ -1,0 +1,71 @@
+# Application do ArgoCD para o Loki (instalado via Helm chart loki-stack).
+#
+# IMPORTANTE - decisao de arquitetura:
+# O Loki foi instalado com `helm install loki grafana/loki-stack`. Esta
+# Application traz esse release para o GitOps apontando para o repo Helm.
+# Os valores (values.yaml) ficam INLINE aqui para o ArgoCD aplicar.
+#
+# ATENCAO: como o Loki ja foi instalado manualmente via Helm, ao criar esta
+# Application o ArgoCD vai "adotar" os recursos existentes. Para evitar conflito
+# entre o release Helm manual e o ArgoCD, escolha UMA das opcoes:
+#
+#   OPCAO A (recomendada): desinstalar o release Helm manual ANTES de aplicar
+#   esta Application, deixando o ArgoCD ser o unico dono:
+#     helm uninstall loki -n monitoring
+#     (os PVs/dados em /var/lib/rancher/loki sao Retain, nao se perdem)
+#     kubectl apply -f k8s/argocd-apps/loki-app.yaml
+#
+#   OPCAO B: manter o Helm manual e NAO usar esta Application (Loki fica fora
+#   do GitOps, gerenciado so por Helm). Mais simples, menos "GitOps puro".
+#
+# O PV do Loki (k8s/monitoring/loki/pv.yaml) e o NodePort
+# (k8s/monitoring/loki/loki-nodeport.yaml) continuam aplicados a parte
+# (sao recursos do cluster, nao do chart).
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: loki-stack
+    targetRevision: 2.10.3
+    helm:
+      values: |
+        loki:
+          enabled: true
+          isDefault: false
+          persistence:
+            enabled: true
+            existingClaim: loki-pvc
+          config:
+            limits_config:
+              retention_period: 4320h
+            table_manager:
+              retention_deletes_enabled: true
+              retention_period: 4320h
+            compactor:
+              working_directory: /data/loki/compactor
+              shared_store: filesystem
+              retention_enabled: true
+        promtail:
+          enabled: true
+          config:
+            clients:
+              - url: http://loki:3100/loki/api/v1/push
+        grafana:
+          enabled: false
+        prometheus:
+          enabled: false
+        fluent-bit:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated: {}
+    syncOptions:
+      - CreateNamespace=false

@@ -1,172 +1,121 @@
 # wol-rpi-k8s
 
-Infraestrutura de game server doméstico com Wake-on-LAN, Kubernetes e painel de controle remoto. O servidor principal (i9) fica desligado e acorda sob demanda via Raspberry Pi Zero W — sempre ligado com consumo mínimo (~1W).
+Homelab GitOps: painel de controle num Raspberry Pi Zero W para ligar um PC via
+Wake-on-LAN sob demanda, rodar game servers em Kubernetes e acessar tudo
+remotamente. O PC (i9) fica desligado e só acorda quando alguém vai jogar.
 
-## Arquitetura
+## Visão geral da arquitetura
 
 ```
 Internet
     │
-Cloudflare Tunnel (HTTPS)
-    ├── panel.areis-solution.com    → Flask painel (RPi Zero W)
-    ├── grafana.areis-solution.com  → Grafana (i9 / k8s)
-    └── argocd.areis-solution.com   → ArgoCD (i9 / k8s)
+    ├── Cloudflare Tunnel (HTTPS) ──► serviços web (painel, Grafana, ArgoCD)
+    │
+    └── Port forward (UDP) ─────────► game servers (Palworld, Abiotic Factor)
 
-Raspberry Pi Zero W [sempre ligado — 192.168.15.12]
-    ├── Flask painel (WoL, desligar, status Palworld, links)
-    └── Cloudflare Tunnel (gateway de acesso)
+Raspberry Pi Zero W (sempre ligado, ~1W)
+    ├── Painel Flask (liga/desliga PC e jogos, status, jogadores online)
+    ├── cloudflared (tunnel)
+    └── consulta o cluster do i9 via API k8s (RBAC) + Loki + REST
 
-PC Linux i9 [acorda sob demanda — 192.168.15.14]
-    └── Kubernetes
-          ├── Vault       (secrets — Raft + auto-unseal)
-          ├── ArgoCD      (GitOps)
-          ├── Prometheus  (métricas)
-          ├── Grafana     (dashboards versionados)
-          └── Game servers
-                └── Palworld (PvE, REST API → painel)
+PC i9 (acorda sob demanda via WoL)
+    └── Kubernetes (kubeadm v1.32)
+        ├── ArgoCD (GitOps)
+        ├── Vault (secrets, auto-unseal)
+        ├── Prometheus + Grafana + Loki (observabilidade)
+        └── Game servers (Palworld, Abiotic Factor) via NodePort
 ```
 
-## Fluxo de uso
+## Infraestrutura física
 
-```
-1. Acessa panel.areis-solution.com e faz login
-2. Clica "Ligar PC" → RPi envia WoL magic packet
-3. i9 boota (~1-3 min), Vault faz auto-unseal
-4. Agente registra IP público e serviços no painel
-5. Painel mostra status do Palworld (jogadores, FPS, uptime)
-6. Joga! Para encerrar, clica "Desligar PC" no painel
-```
+### Raspberry Pi Zero W — gateway sempre ligado
+- OS Raspberry Pi OS Lite 32-bit (ARMv6), 512MB RAM, ~1W
+- IP fixo `192.168.15.12` (reserva DHCP, MAC `b8:27:eb:c1:50:af`)
+- GUI desabilitada (`multi-user.target`) para liberar RAM
+- Hospeda: painel Flask (systemd `wol-panel`), cloudflared
 
----
+### PC i9 — servidor principal sob demanda
+- i9 11ª geração (8c/16t), 32GB RAM, GTX 1660, Ubuntu 24.04
+- IP fixo `192.168.15.14` (MAC `00:e0:4c:a6:00:3e`)
+- Acorda via WoL (magic packet enviado pelo RPi), interface `enp5s0`
+- Kubernetes kubeadm v1.32, Flannel CNI (`10.244.0.0/16`)
 
-## Infraestrutura
+### Discos do i9 (montados por UUID no fstab — ver Incidente 16)
+| Partição | UUID | Tamanho | Uso |
+|----------|------|---------|-----|
+| root `/` | f3940cf8-... | 29GB | Ubuntu |
+| k8s | 639a06c7-4964-4f04-ba24-7ba0bb614887 | 526GB | `/var/lib/rancher` |
+| games | 27c11386-... | 186GB | `/mnt/games` |
 
-### Raspberry Pi Zero W (sempre ligado)
-- Gateway leve — painel web + WoL + Cloudflare Tunnel + desligar remoto
-- Raspberry Pi OS Lite (32-bit, ARMv6), ~1W
-- IP fixo `192.168.15.12` (MAC `b8:27:eb:c1:50:af`)
+> CRÍTICO: montar SEMPRE por UUID. Nomes NVMe (`nvme0n1`/`nvme1n1`) trocam
+> entre reboots e quebram a montagem. Ver post-mortem Incidente 16.
 
-### PC Linux i9 (acorda sob demanda)
-- Intel Core i9 11ª geração, 32GB RAM, NVIDIA GTX 1660
-- Ubuntu 24.04 LTS, IP fixo `192.168.15.14` (MAC `00:e0:4c:a6:00:3e`)
-- Kubernetes kubeadm v1.32
+### Rede / acesso externo
+- Domínio `areis-solution.com` (Cloudflare)
+- IP público FIXO `179.246.145.230` (Vivo, contratado)
+- Subdomínios via Cloudflare Tunnel (HTTP): `panel`, `grafana`, `argocd`
+- Game servers via port forward UDP no roteador (campo "IP Externo" VAZIO)
 
-### Discos
-| Disco | Tamanho | Uso |
-|-------|---------|-----|
-| `nvme0n1p3` | 206GB | Windows (dual boot) |
-| `nvme0n1p6` | 29GB | Ubuntu `/` |
-| `nvme1n1p1` | 450GB | Jogos Windows (NTFS) |
-| `nvme1n1p2` | 526GB | Kubernetes — `/var/lib/rancher` |
+## Componentes do cluster
 
-> Containerd, Vault, Prometheus e game servers usam o disco secundário
-> via symlink/PV. StorageClass `local-storage` (provisioner manual).
+### GitOps — ArgoCD
+Applications (todas com auto-sync):
+- `wol-infra` → Vault (k8s/vault)
+- `palworld` → k8s/games/palworld (ignoreDifferences em /spec/replicas)
+- `abiotic-factor` → k8s/games/abiotic-factor (idem)
+- `loki` → chart Helm loki-stack (opcional, ver k8s/argocd-apps/loki-app.yaml)
 
----
+> ignoreDifferences em /spec/replicas: permite o painel escalar 0↔1 sem o
+> ArgoCD reverter. Ver post-mortem Incidente 15.
 
-## Stack
+### Secrets — Vault
+Raft storage, auto-unseal via systemd lendo /etc/vault/unseal-key.
 
-### Raspberry Pi Zero W
-| Componente | Função |
-|-----------|--------|
-| Flask + HTMX + Jinja2 | Painel web |
-| wakeonlan | Magic packet |
-| requests | Consulta REST API do Palworld |
-| SSH | Desligamento remoto do i9 |
-| cloudflared | Tunnel (multi-hostname) |
+### Observabilidade
+- Prometheus + Grafana (kube-prometheus-stack)
+- Loki + Promtail (agregação de logs, retenção 6 meses)
+- Dashboards versionados via ConfigMap (label `grafana_dashboard: "1"`)
+- Dashboard "Game Servers — Jogadores e Conexões (Loki)"
 
-### Kubernetes (i9)
-| Componente | Função |
-|-----------|--------|
-| kubeadm v1.32 | Cluster |
-| Flannel | CNI (`10.244.0.0/16`) |
-| Helm v3 | Charts |
-| Vault (Raft) | Secrets + auto-unseal |
-| ArgoCD | GitOps |
-| kube-prometheus-stack | Prometheus + Grafana + AlertManager |
-| GitHub Actions | Validação de manifestos (kubeconform) |
-| Terraform | StorageClass (IaC) |
+## Game servers
 
-### Acesso externo (mesmo tunnel)
-| Subdomínio | Serviço |
-|-----------|---------|
-| `panel.areis-solution.com` | Painel Flask (RPi) |
-| `grafana.areis-solution.com` | Grafana |
-| `argocd.areis-solution.com` | ArgoCD |
+| Jogo | Imagem | Porta (NodePort) | Players | Monitoramento |
+|------|--------|------------------|---------|---------------|
+| Palworld | thijsvanloef/palworld-server-docker | 30211/UDP | 8 | REST API (30212) |
+| Abiotic Factor | andrewsav/abiotic-factor (Wine) | 30777/UDP | 6 | Loki (logs) |
 
----
+Cada jogo: namespace próprio, PV em `/var/lib/rancher/<jogo>`, secret de senha
+fora do Git, Service NodePort, README. Padrão documentado em
+`docs/como-adicionar-game-server.md`.
 
-## Game Servers
+## Painel (site/)
 
-| Jogo | Modo | Portas (NodePort) | Status |
-|------|------|-------------------|--------|
-| Palworld | PvE, 8 players | 30211/UDP (jogo), 30015/UDP (query), 30212/TCP (API) | ✅ |
+Flask + HTMX no RPi (systemd `wol-panel`). Funções:
+- Ligar PC (WoL) / desligar PC (SSH `shutdown`)
+- Ligar/desligar cada game server (escala réplicas via API k8s, RBAC mínimo)
+- Status do PC e de cada jogo
+- Jogadores online: Palworld via REST API, Abiotic via Loki (anti-fantasma:
+  só mostra se o servidor está ligado)
+- Endereço de conexão de cada jogo com botão copiar
+- Dois níveis de acesso: admin (liga+desliga) e convidado (só liga)
 
-O painel exibe em tempo real: jogadores online, FPS do servidor, dias no
-mundo e uptime — via REST API do Palworld.
-
-Para adicionar novos jogos, veja [docs/como-adicionar-game-server.md](docs/como-adicionar-game-server.md).
-
----
-
-## Roadmap
-
-| Etapa | Descrição | Status |
-|-------|-----------|--------|
-| 1 | Painel Flask (WoL + login + status) | ✅ |
-| 2 | Integração WoL | ✅ |
-| 3 | Cloudflare Tunnel + domínio | ✅ |
-| 4 | Agente no i9 | ✅ |
-| 5 | Kubernetes + Helm | ✅ |
-| 6 | Vault (Raft + auto-unseal) | ✅ |
-| 7 | ArgoCD (GitOps) | ✅ |
-| 8 | Prometheus + Grafana + dashboards | ✅ |
-| 9 | GitHub Actions | ✅ |
-| 10 | Terraform | ✅ |
-| 11 | Painel: status de serviços + desligar remoto | ✅ |
-| 12 | Primeiro game server (Palworld) + monitoramento | ✅ |
-
----
-
-## Decisões
-
-| Decisão | Escolha | Justificativa |
-|---------|---------|---------------|
-| Gateway sempre ligado | RPi Zero W | ~1W, suficiente para Flask + WoL + tunnel |
-| Pesado no i9, leve no RPi | ArgoCD/Prometheus/Grafana no i9 | RPi Zero W (512MB, ARMv6) não suporta |
-| Kubernetes | kubeadm v1.32 | 32GB RAM, próximo do mercado |
-| Exposição | Cloudflare Tunnel | Grátis, HTTPS, sem abrir portas |
-| Secrets | Vault Raft + auto-unseal | Persistente, self-hosted |
-| GitOps | ArgoCD | Padrão de mercado |
-| Monitoramento | kube-prometheus-stack | Tudo em um chart |
-| Dashboards | ConfigMap + sidecar | Versionado, aplicado via ArgoCD |
-| CI | kubeconform (GitHub Actions) | Valida antes do deploy |
-| IaC | Terraform | Fácil migração para AWS |
-| Desligamento | Botão no painel via SSH | Manual e seguro (vs auto-shutdown arriscado) |
-| Game server isolamento | Namespace por jogo | Organização e limites por jogo |
-| Monitoramento de jogo | REST API → painel | Visibilidade de players sem entrar no servidor |
-
----
+Controle dos jogos via ServiceAccount `panel-controller` (RBAC mínimo:
+get/patch deployments+scale nos namespaces dos jogos). Ver k8s/rbac/.
 
 ## Documentação
 
-| Documento | Descrição |
-|-----------|-----------|
-| [docs/setup-completo.md](docs/setup-completo.md) | Guia do zero ao cluster |
-| [docs/checklist-k8s.md](docs/checklist-k8s.md) | Checklist k8s + Vault + ArgoCD |
-| [docs/como-adicionar-game-server.md](docs/como-adicionar-game-server.md) | Como subir um novo jogo |
-| [docs/post-mortem-2026-06-05.md](docs/post-mortem-2026-06-05.md) | Incidentes e lições |
+- `docs/setup-completo.md` — do zero ao cluster
+- `docs/checklist-k8s.md` — checklist de instalação
+- `docs/como-adicionar-game-server.md` — guia para novos jogos
+- `docs/post-mortem-2026-06-05.md` — incidentes 1–13
+- `docs/post-mortem-2026-06-28.md` — incidentes 14–18 (IP travado, ArgoCD
+  replicas, disco/UUID, A2S, Loki)
 
----
+## Lições recorrentes
 
-## Pontos de atenção
-
-- **IPs fixos:** reservar DHCP por MAC antes de instalar k8s
-- **Swap:** desabilitado — verificar `free -h` antes do init
-- **Disco:** containerd/Vault/Prometheus/games no disco secundário
-- **Vault:** Raft + auto-unseal — secrets persistem após reboot
-- **ArgoCD + RWO:** updates causam ~30s downtime (aceitável)
-- **GPU NVIDIA:** mitigação de freezes via `nvidia.NVreg_EnableGpuFirmware=0`
-- **S5/WoL:** cooler e RGB podem ficar ligados após shutdown (normal)
-- **NodePort:** range válido 30000-32767
-- **Boot time:** WoL → online leva 1–3 min
+1. **Nunca dependa de identificadores mutáveis:** IP dinâmico (→ IP fixo),
+   nome de disco NVMe (→ UUID no fstab). Os dois maiores incidentes do projeto.
+2. **GitOps + controle externo de réplicas:** use ignoreDifferences.
+3. **Monitoramento de jogadores:** logs (Loki) são universais; A2S e REST API
+   são específicos e nem sempre disponíveis.
+4. **Roteador Vivo:** campo "IP Externo" do port forward deve ficar VAZIO.
