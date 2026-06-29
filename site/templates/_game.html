@@ -54,3 +54,20 @@
     <button type="submit">▶ Ligar servidor</button>
 </form>
 {% endif %}
+
+{# ---- Chat recente (sempre que houver historico) ---- #}
+{% if chat %}
+<details style="margin-top: 0.85rem;">
+    <summary style="cursor: pointer; color: var(--pico-muted-color); font-size: 0.9rem;">
+        💬 Chat recente ({{ chat|length }})
+    </summary>
+    <div style="margin-top: 0.4rem; max-height: 220px; overflow-y: auto; font-size: 0.88rem; line-height: 1.5;">
+        {% for m in chat %}
+        <div style="padding: 0.15rem 0;">
+            <strong style="color: var(--pico-primary);">{{ m.nome }}:</strong>
+            <span>{{ m.msg }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</details>
+{% endif %}

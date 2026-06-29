@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 from datetime import datetime, timedelta
 from functools import wraps
@@ -33,21 +34,17 @@ K8S_API = os.environ.get('K8S_API', 'https://192.168.15.14:6443')
 K8S_TOKEN = os.environ.get('K8S_TOKEN', '')
 K8S_CA_CERT = os.environ.get('K8S_CA_CERT', '')
 
-# Palworld REST API (metricas completas)
 PALWORLD_API_URL = os.environ.get('PALWORLD_API_URL', '')
 PALWORLD_API_USER = os.environ.get('PALWORLD_API_USER', 'admin')
 PALWORLD_API_PASS = os.environ.get('PALWORLD_API_PASS', '')
 
-# Loki (consulta de jogadores online via logs) - NodePort no i9
 LOKI_URL = os.environ.get('LOKI_URL', 'http://192.168.15.14:31100')
-# Janela de tempo (horas) para considerar eventos de conexao recentes
 LOKI_WINDOW_HOURS = int(os.environ.get('LOKI_WINDOW_HOURS', '12'))
+CHAT_LIMIT = int(os.environ.get('CHAT_LIMIT', '10'))
 
 WAKING_TIMEOUT = 300
 STATE_FILE = os.path.join(os.path.dirname(__file__), 'state.json')
 
-# Catalogo de jogos.
-# fonte_players: 'rest' (Palworld REST API) ou 'loki' (logs via Loki)
 GAMES = {
     'palworld': {
         'nome': 'Palworld',
@@ -56,12 +53,12 @@ GAMES = {
         'deployment': 'palworld-server',
         'porta_conexao': 30211,
         'fonte_players': 'rest',
-        # padroes de log (caso queira usar Loki tambem para o Palworld)
         'log_join': 'joined the server',
         'log_leave': 'left the server',
-        # regex para extrair o nome: "Nome joined the server."
         'log_name_regex': r'(\w[\w .-]*) joined the server',
         'log_leave_name_regex': r'(\w[\w .-]*) left the server',
+        'chat_filtro': r'\\[CHAT\\]',
+        'chat_regex': r'\[CHAT\]\s+<([^>]+)>\s+(.+)$',
     },
     'abiotic-factor': {
         'nome': 'Abiotic Factor',
@@ -74,8 +71,13 @@ GAMES = {
         'log_leave': 'exited the facility',
         'log_name_regex': r'CHAT LOG:\s+(.+?) has entered the facility',
         'log_leave_name_regex': r'CHAT LOG:\s+(.+?) has exited the facility',
+        'chat_filtro': 'CHAT LOG:',
+        'chat_regex': r'CHAT LOG:\s+(\S+)\s+(.+)$',
     },
 }
+
+# Padroes que NAO sao chat de jogador (filtrar para nao poluir)
+ABIOTIC_NAO_CHAT = ('has entered the facility', 'has exited the facility')
 
 
 def load_state():
@@ -136,15 +138,11 @@ def scale_game(game, replicas):
 
 
 def get_palworld_metrics():
-    """Metricas completas do Palworld via REST API."""
     if not PALWORLD_API_URL:
         return None
     try:
-        resp = requests.get(
-            f'{PALWORLD_API_URL}/v1/api/metrics',
-            auth=(PALWORLD_API_USER, PALWORLD_API_PASS),
-            timeout=3,
-        )
+        resp = requests.get(f'{PALWORLD_API_URL}/v1/api/metrics',
+                            auth=(PALWORLD_API_USER, PALWORLD_API_PASS), timeout=3)
         if resp.status_code == 200:
             return resp.json()
     except Exception:
@@ -153,35 +151,24 @@ def get_palworld_metrics():
 
 
 def get_palworld_players():
-    """Lista de nomes dos jogadores online no Palworld via REST API."""
     if not PALWORLD_API_URL:
         return []
     try:
-        resp = requests.get(
-            f'{PALWORLD_API_URL}/v1/api/players',
-            auth=(PALWORLD_API_USER, PALWORLD_API_PASS),
-            timeout=3,
-        )
+        resp = requests.get(f'{PALWORLD_API_URL}/v1/api/players',
+                            auth=(PALWORLD_API_USER, PALWORLD_API_PASS), timeout=3)
         if resp.status_code == 200:
-            data = resp.json()
-            return [p.get('name', '?') for p in data.get('players', [])]
+            return [p.get('name', '?') for p in resp.json().get('players', [])]
     except Exception:
         pass
     return []
 
 
 def _loki_query_range(logql, hours):
-    """Consulta o Loki num intervalo e retorna a lista de streams/valores."""
     try:
         end = datetime.utcnow()
         start = end - timedelta(hours=hours)
-        params = {
-            'query': logql,
-            'start': str(int(start.timestamp() * 1e9)),
-            'end': str(int(end.timestamp() * 1e9)),
-            'limit': '1000',
-            'direction': 'forward',
-        }
+        params = {'query': logql, 'start': str(int(start.timestamp() * 1e9)),
+                  'end': str(int(end.timestamp() * 1e9)), 'limit': '2000', 'direction': 'forward'}
         r = requests.get(f'{LOKI_URL}/loki/api/v1/query_range', params=params, timeout=5)
         if r.status_code == 200:
             return r.json().get('data', {}).get('result', [])
@@ -191,49 +178,69 @@ def _loki_query_range(logql, hours):
 
 
 def get_loki_players(game):
-    """Determina quem esta online via Loki: para cada jogador, ve se o
-    ultimo evento (dentro da janela) foi entrada (online) ou saida (offline)."""
-    import re
     g = GAMES[game]
     ns = g['namespace']
-    # Busca entradas e saidas na janela
     logql = f'{{namespace="{ns}"}} |~ "{g["log_join"]}|{g["log_leave"]}"'
     result = _loki_query_range(logql, LOKI_WINDOW_HOURS)
     if result is None:
-        return None  # erro de consulta -> indeterminado
-    # Monta lista de eventos (timestamp, nome, tipo) e ordena por tempo
+        return None
     eventos = []
     re_join = re.compile(g['log_name_regex'])
     re_leave = re.compile(g['log_leave_name_regex'])
     for stream in result:
         for ts, line in stream.get('values', []):
-            ts = int(ts)
             mj = re_join.search(line)
             ml = re_leave.search(line)
             if mj:
-                eventos.append((ts, mj.group(1).strip(), 'in'))
+                eventos.append((int(ts), mj.group(1).strip(), 'in'))
             elif ml:
-                eventos.append((ts, ml.group(1).strip(), 'out'))
+                eventos.append((int(ts), ml.group(1).strip(), 'out'))
     eventos.sort(key=lambda e: e[0])
-    # Para cada nome, o ultimo evento define se esta online
     estado = {}
     for ts, nome, tipo in eventos:
         estado[nome] = (tipo == 'in')
     return [nome for nome, online in estado.items() if online]
 
 
+def get_loki_chat(game, limite=CHAT_LIMIT):
+    """Ultimas N mensagens de chat do jogo via Loki."""
+    g = GAMES[game]
+    chat_re = g.get('chat_regex')
+    if not chat_re:
+        return []
+    chat_re = re.compile(chat_re)
+    ns = g['namespace']
+    logql = f'{{namespace="{ns}"}} |~ "{g["chat_filtro"]}"'
+    result = _loki_query_range(logql, LOKI_WINDOW_HOURS)
+    if not result:
+        return []
+    msgs = []
+    for stream in result:
+        for ts, line in stream.get('values', []):
+            m = chat_re.search(line)
+            if not m:
+                continue
+            nome = m.group(1).strip()
+            msg = m.group(2).strip()
+            # Filtra linhas que nao sao chat real (ex: entered/exited do Abiotic)
+            if game == 'abiotic-factor' and any(x in line for x in ABIOTIC_NAO_CHAT):
+                continue
+            msgs.append((int(ts), nome, msg))
+    msgs.sort(key=lambda x: x[0])
+    msgs = msgs[-limite:]
+    return [{'nome': n, 'msg': msg} for _, n, msg in msgs]
+
+
 def get_players(game, ligado):
-    """Retorna (lista_nomes, fonte_ok). Anti-fantasma: se o servidor esta
-    desligado, retorna lista vazia SEM consultar nada."""
     if not ligado:
-        return [], True  # servidor desligado = ninguem online, ponto final
+        return [], True
     g = GAMES[game]
     if g['fonte_players'] == 'rest':
         return get_palworld_players(), True
     else:
         nomes = get_loki_players(game)
         if nomes is None:
-            return [], False  # indeterminado (erro Loki)
+            return [], False
         return nomes, True
 
 
@@ -309,13 +316,14 @@ def game_fragment(game):
     ligado = bool(replicas) if replicas is not None else False
     players, fonte_ok = get_players(game, ligado) if online else ([], True)
     metrics = get_palworld_metrics() if (online and ligado and g['fonte_players'] == 'rest') else None
+    chat = get_loki_chat(game)  # sempre, mesmo desligado (mostra historico)
     endereco = f"{PUBLIC_HOST}:{g['porta_conexao']}"
     is_admin = session.get('role') == 'admin'
     return render_template(
         '_game.html',
         game=game, g=g, online=online, ligado=ligado,
         players=players, fonte_ok=fonte_ok, metrics=metrics,
-        endereco=endereco, is_admin=is_admin,
+        endereco=endereco, is_admin=is_admin, chat=chat,
     )
 
 
@@ -357,8 +365,7 @@ def shutdown():
         result = subprocess.run(
             ['ssh', '-o', 'ConnectTimeout=5', '-o', 'StrictHostKeyChecking=no',
              f'{PC_SSH_USER}@{PC_LOCAL_IP}', 'sudo shutdown now'],
-            capture_output=True, text=True, timeout=10,
-        )
+            capture_output=True, text=True, timeout=10)
         if result.returncode == 0:
             return '<p><strong class="status-waking">⏻ Comando de desligamento enviado.</strong></p>'
         return f'<p><strong class="status-offline">Erro ao desligar: {result.stderr[:100]}</strong></p>'
@@ -373,13 +380,8 @@ def register():
         if auth != f'Bearer {REGISTER_TOKEN}':
             return {'error': 'unauthorized'}, 401
     data = request.get_json(silent=True) or {}
-    state = {
-        'ip': data.get('ip'),
-        'services': data.get('services', []),
-        'last_seen': datetime.utcnow().isoformat(),
-        'waking': False,
-        'waking_since': None,
-    }
+    state = {'ip': data.get('ip'), 'services': data.get('services', []),
+             'last_seen': datetime.utcnow().isoformat(), 'waking': False, 'waking_since': None}
     save_state(state)
     return {'ok': True}
 
