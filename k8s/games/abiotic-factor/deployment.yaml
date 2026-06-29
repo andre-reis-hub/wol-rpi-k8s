@@ -20,7 +20,7 @@ spec:
         vault.hashicorp.com/agent-inject-secret-server-password: "wol/data/abiotic-factor"
         vault.hashicorp.com/agent-inject-template-server-password: |
           {{- with secret "wol/data/abiotic-factor" -}}
-          {{ .Data.data.server-password }}
+          {{ index .Data.data "server-password" }}
           {{- end -}}
         vault.hashicorp.com/agent-pre-populate-only: "true"
     spec:
