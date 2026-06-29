@@ -68,7 +68,7 @@ GAMES = {
         'emoji': '🧪',
         'namespace': 'abiotic-factor',
         'deployment': 'abiotic-factor-server',
-        'porta_conexao': 30777,
+        'porta_conexao': 7777,
         'fonte_players': 'loki',
         'log_join': 'entered the facility',
         'log_leave': 'exited the facility',

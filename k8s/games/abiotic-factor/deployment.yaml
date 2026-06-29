@@ -15,18 +15,21 @@ spec:
       labels:
         app: abiotic-factor-server
     spec:
+      # hostNetwork: pod usa a rede do i9 diretamente. Resolve jogar no mesmo host (EOS).
+      # Servidor escuta direto em 7777/UDP e 27015/UDP no IP do i9.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: abiotic-factor-server
           image: andrewsav/abiotic-factor:latest
           ports:
             - containerPort: 7777
+              hostPort: 7777
               protocol: UDP
             - containerPort: 27015
+              hostPort: 27015
               protocol: UDP
           env:
-            # NOTA: a senha (-ServerPassword=) NAO esta aqui de proposito, para
-            # nao expor no Git. Ela e adicionada via 'kubectl set env' apos o
-            # deploy (ver README.md, Opcao A).
             - name: args
               value: >-
                 -userdir=/server/AbioticFactor/Saved
