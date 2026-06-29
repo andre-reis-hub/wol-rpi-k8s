@@ -14,14 +14,28 @@ spec:
     metadata:
       labels:
         app: abiotic-factor-server
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "abiotic-factor"
+        vault.hashicorp.com/agent-inject-secret-server-password: "wol/data/abiotic-factor"
+        vault.hashicorp.com/agent-inject-template-server-password: |
+          {{- with secret "wol/data/abiotic-factor" -}}
+          {{ .Data.data.server-password }}
+          {{- end -}}
+        vault.hashicorp.com/agent-pre-populate-only: "true"
     spec:
-      # hostNetwork: pod usa a rede do i9 diretamente. Resolve jogar no mesmo host (EOS).
-      # Servidor escuta direto em 7777/UDP e 27015/UDP no IP do i9.
+      serviceAccountName: abiotic-factor-sa
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: abiotic-factor-server
           image: andrewsav/abiotic-factor:latest
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              SENHA="$(cat /vault/secrets/server-password)"
+              export args="-userdir=/server/AbioticFactor/Saved -newconsole -useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS -MaxServerPlayers=6 -PORT=7777 -QUERYPORT=27015 -ServerName=Servidor-do-Andre-Abiotic -SaveName=Mundo -SteamServerName=Servidor-do-Andre-Abiotic -ServerPassword=${SENHA}"
+              exec /entrypoint.sh
           ports:
             - containerPort: 7777
               hostPort: 7777
@@ -29,20 +43,6 @@ spec:
             - containerPort: 27015
               hostPort: 27015
               protocol: UDP
-          env:
-            - name: args
-              value: >-
-                -userdir=/server/AbioticFactor/Saved
-                -newconsole
-                -useperfthreads
-                -NoAsyncLoadingThread
-                -UseMultithreadForDS
-                -MaxServerPlayers=6
-                -PORT=7777
-                -QUERYPORT=27015
-                -ServerName=Servidor-do-Andre-Abiotic
-                -SaveName=Mundo
-                -SteamServerName=Servidor-do-Andre-Abiotic
           resources:
             requests:
               memory: "6Gi"
