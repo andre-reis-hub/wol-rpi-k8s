@@ -151,3 +151,54 @@ O pod montou e ficou Running em seguida.
 
 **Lição:** Após corrigir uma montagem de disco, recriar qualquer diretório que
 tenha sido criado enquanto o disco errado estava montado.
+## Incidente 19 — Senha do Abiotic sumia ao sincronizar o ArgoCD
+
+**Sintoma:** O servidor Abiotic Factor ficava acessivel SEM senha de tempos em
+tempos. Qualquer um conseguia entrar.
+
+**Causa raiz:** A senha era adicionada via `kubectl set env` (fora do Git,
+porque o repo e publico). O deployment no Git NAO tinha a senha. Toda vez que o
+ArgoCD sincronizava (manual ou ao corrigir um "out of sync"), ele aplicava o
+estado do Git e apagava a senha do `args`. O servidor reiniciava aberto.
+
+**Solucao:** Migrar a senha para o **Vault** (Vault Agent Injector). Agora a
+senha vive no Vault (KV `wol/abiotic-factor`), e um init container a injeta em
+`/vault/secrets/server-password` a cada start do pod. Um wrapper no container le
+o arquivo e monta o `args`. Assim:
+- A senha nunca esta no Git nem depende de `kubectl set env`
+- O ArgoCD pode sincronizar a vontade (o Vault reinjeta sempre)
+
+Procedimento completo em `docs/vault-secrets.md`.
+
+**Pegadinha encontrada (template Vault):** o primeiro deploy falhou com
+`bad character U+002D '-'` no init container. Causa: o nome da chave
+`server-password` tem hifen, e no Go template `.Data.data.server-password` o
+hifen vira operador de subtracao. Corrigido usando:
+`{{ index .Data.data "server-password" }}`.
+
+**Licao:** Para segredos em repo publico, Vault (ou similar) e a solucao certa
+— nao `kubectl set env` manual (fragil, some no sync) nem senha no Git
+(inseguro). Mais um caso da licao recorrente: nao depender de estado manual
+fora do controle declarativo.
+
+---
+
+## Nota tecnica — hostNetwork no Abiotic Factor (jogar no mesmo host)
+
+**Contexto:** O Abiotic usa EOS (Epic Online Services). Quando o cliente do jogo
+roda na MESMA maquina fisica que hospeda o servidor (o i9), a conexao dava
+ConnectionTimeout apos 15s (o roteamento EOS nao fechava com cliente+servidor
+no mesmo host + rede isolada do k8s). Colegas em outras redes conectavam normal.
+O Palworld (Steam networking) nao tem esse problema.
+
+**Solucao:** `hostNetwork: true` no deployment do Abiotic. O pod passa a usar a
+rede do host diretamente, eliminando a traducao que quebrava a conexao local.
+
+**Impacto:** As portas mudaram de NodePort (30777/30016) para portas diretas no
+host (7777/27015). Ajustes feitos:
+- Port forward no roteador: 7777/UDP -> 192.168.15.14
+- Painel (app.py): porta_conexao do Abiotic = 7777
+- Endereco de conexao: 179.246.145.230:7777 (externo) ou 192.168.15.14:7777 (local)
+
+**Licao:** Jogos com EOS podem exigir hostNetwork para funcionar com
+cliente+servidor no mesmo host. Steam networking (Palworld) e mais flexivel.
