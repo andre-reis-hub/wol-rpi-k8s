@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-gamer
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  gamer.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "panels": [
+        {
+          "title": "🏆 Ranking — quem mais entrou (7d)",
+          "type": "bargauge",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "targets": [{
+            "expr": "topk(10, sum by (jogador) (count_over_time({namespace=~\"palworld|abiotic-factor|valheim\"} |~ \"joined the server|entered the facility\" | regexp \"(?P<jogador>\\\\S+) (joined the server|has entered the facility)\" [7d])))",
+            "refId": "A"
+          }],
+          "description": "Numero de entradas por jogador nos ultimos 7 dias."
+        },
+        {
+          "title": "🎮 Atividade por jogo — conexões/dia (30d)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "targets": [{
+            "expr": "sum by (namespace) (count_over_time({namespace=~\"palworld|abiotic-factor|valheim\"} |~ \"joined the server|entered the facility\" [1d]))",
+            "legendFormat": "{{namespace}}", "refId": "A"
+          }],
+          "description": "Qual jogo esta bombando? Conexoes por dia por servidor."
+        },
+        {
+          "title": "💬 Mensagens de chat por dia",
+          "type": "timeseries",
+          "gridPos": { "h": 7, "w": 12, "x": 0, "y": 8 },
+          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "targets": [{
+            "expr": "sum by (namespace) (count_over_time({namespace=~\"palworld|abiotic-factor|valheim\"} |~ \"\\\\[CHAT\\\\] <|CHAT LOG:\" [1d]))",
+            "legendFormat": "{{namespace}}", "refId": "A"
+          }]
+        },
+        {
+          "title": "🕐 Horários de pico (entradas por hora, 7d)",
+          "type": "timeseries",
+          "gridPos": { "h": 7, "w": 12, "x": 12, "y": 8 },
+          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "targets": [{
+            "expr": "sum(count_over_time({namespace=~\"palworld|abiotic-factor|valheim\"} |~ \"joined the server|entered the facility\" [1h]))",
+            "legendFormat": "entradas/h", "refId": "A"
+          }],
+          "description": "Quando a galera mais joga — util para agendar manutencoes fora do pico."
+        },
+        {
+          "title": "📜 Últimas conexões (todos os jogos)",
+          "type": "logs",
+          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 15 },
+          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "options": { "showTime": true, "sortOrder": "Descending" },
+          "targets": [{
+            "expr": "{namespace=~\"palworld|abiotic-factor|valheim\"} |~ \"joined the server|left the server|entered the facility|exited the facility\"",
+            "refId": "A"
+          }]
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["wol-rpi-k8s", "gamer", "estatisticas"],
+      "templating": { "list": [
+        { "name": "DS_LOKI", "type": "datasource", "query": "loki", "current": {} }
+      ]},
+      "time": { "from": "now-7d", "to": "now" },
+      "title": "Gamer Stats — Jogadores, Sessões e Atividade",
+      "uid": "gamer-stats",
+      "version": 1
+    }

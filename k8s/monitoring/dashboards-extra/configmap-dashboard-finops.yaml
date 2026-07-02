@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-finops
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  finops.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "panels": [
+        {
+          "title": "💰 Custo estimado do i9 ligado (R$/mês se 24/7)",
+          "type": "stat",
+          "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [{
+            "expr": "(150 * 0.95 / 1000) * 720",
+            "legendFormat": "R$/mes 24/7", "refId": "A"
+          }],
+          "options": { "colorMode": "value" },
+          "fieldConfig": { "defaults": { "unit": "currencyBRL", "decimals": 2 } },
+          "description": "Estimativa: potencia media 150W x tarifa R$0,95/kWh x 720h. AJUSTE os valores na query para sua tarifa/consumo real."
+        },
+        {
+          "title": "⏱️ Uptime do i9 (este mês = horas ligado)",
+          "type": "stat",
+          "gridPos": { "h": 5, "w": 8, "x": 8, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [{
+            "expr": "sum_over_time(up{job=\"node-exporter\"}[30d]) / 60",
+            "legendFormat": "horas ligado (30d)", "refId": "A"
+          }],
+          "fieldConfig": { "defaults": { "unit": "h", "decimals": 1 } },
+          "description": "Horas que o i9 ficou ligado nos ultimos 30 dias (base scrape 1/min). Economia do WoL = 720h - este valor."
+        },
+        {
+          "title": "💸 Custo real estimado (30d, so horas ligadas)",
+          "type": "stat",
+          "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [{
+            "expr": "(sum_over_time(up{job=\"node-exporter\"}[30d]) / 60) * (150 * 0.95 / 1000)",
+            "legendFormat": "R$ (30d)", "refId": "A"
+          }],
+          "fieldConfig": { "defaults": { "unit": "currencyBRL", "decimals": 2 } },
+          "description": "Horas ligadas x 150W x R$0,95/kWh. A diferenca para o painel 24/7 e sua ECONOMIA com WoL!"
+        },
+        {
+          "title": "RAM por jogo (GB)",
+          "type": "timeseries",
+          "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [{
+            "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"palworld|abiotic-factor|valheim\", container!=\"\"}) / 1024/1024/1024",
+            "legendFormat": "{{namespace}}", "refId": "A"
+          }],
+          "fieldConfig": { "defaults": { "unit": "decgbytes" } }
+        },
+        {
+          "title": "CPU por jogo (cores)",
+          "type": "timeseries",
+          "gridPos": { "h": 9, "w": 12, "x": 12, "y": 5 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [{
+            "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"palworld|abiotic-factor|valheim\", container!=\"\"}[5m]))",
+            "legendFormat": "{{namespace}}", "refId": "A"
+          }]
+        },
+        {
+          "title": "Disco usado por jogo (GB em /var/lib/rancher)",
+          "type": "bargauge",
+          "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [{
+            "expr": "sum by (persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=~\"palworld|abiotic-factor|valheim|monitoring\"}) / 1024/1024/1024",
+            "legendFormat": "{{persistentvolumeclaim}}", "refId": "A"
+          }],
+          "fieldConfig": { "defaults": { "unit": "decgbytes" } }
+        },
+        {
+          "title": "Horas de servidor de jogo LIGADO por dia (réplicas>0)",
+          "type": "timeseries",
+          "gridPos": { "h": 7, "w": 12, "x": 12, "y": 14 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [{
+            "expr": "sum by (namespace) (avg_over_time(kube_deployment_spec_replicas{namespace=~\"palworld|abiotic-factor|valheim\"}[1d])) * 24",
+            "legendFormat": "{{namespace}} h/dia", "refId": "A"
+          }],
+          "fieldConfig": { "defaults": { "unit": "h" } },
+          "description": "Quanto tempo cada servidor ficou ligado por dia — otimize desligando o que ninguem joga."
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["wol-rpi-k8s", "finops", "custos"],
+      "templating": { "list": [
+        { "name": "DS_PROM", "type": "datasource", "query": "prometheus", "current": {} }
+      ]},
+      "time": { "from": "now-7d", "to": "now" },
+      "title": "FinOps — Custos e Recursos do Homelab",
+      "uid": "finops-homelab",
+      "version": 1
+    }

@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: valheim-server
+  namespace: valheim
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: valheim-server
+  template:
+    metadata:
+      labels:
+        app: valheim-server
+      annotations:
+        # Senha via Vault (padrao do projeto - ver docs/vault-secrets.md)
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "valheim"
+        vault.hashicorp.com/agent-inject-secret-server-password: "wol/data/valheim"
+        vault.hashicorp.com/agent-inject-template-server-password: |
+          {{- with secret "wol/data/valheim" -}}
+          {{ index .Data.data "server-password" }}
+          {{- end -}}
+        vault.hashicorp.com/agent-pre-populate-only: "true"
+    spec:
+      serviceAccountName: valheim-sa
+      containers:
+        - name: valheim-server
+          image: ghcr.io/community-valheim-tools/valheim-server:latest
+          # Wrapper: le a senha do Vault e exporta SERVER_PASS antes do entrypoint
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              export SERVER_PASS="$(cat /vault/secrets/server-password)"
+              exec /usr/local/sbin/bootstrap
+          ports:
+            - containerPort: 2456
+              protocol: UDP
+            - containerPort: 2457
+              protocol: UDP
+          env:
+            - name: SERVER_NAME
+              value: "Servidor do Andre - Valheim"
+            - name: WORLD_NAME
+              value: "MundoAndre"
+            - name: SERVER_PUBLIC
+              value: "false"
+            - name: TZ
+              value: "America/Sao_Paulo"
+            - name: BACKUPS
+              value: "true"
+            - name: BACKUPS_CRON
+              value: "0 */2 * * *"
+            - name: BACKUPS_MAX_COUNT
+              value: "12"
+            - name: UPDATE_IF_IDLE
+              value: "true"
+          resources:
+            requests:
+              memory: "3Gi"
+              cpu: "1500m"
+            limits:
+              memory: "6Gi"
+              cpu: "4000m"
+          volumeMounts:
+            - name: valheim-data
+              mountPath: /config
+      volumes:
+        - name: valheim-data
+          persistentVolumeClaim:
+            claimName: valheim-pvc
