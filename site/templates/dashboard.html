@@ -4,16 +4,21 @@
     <h2>Painel de Controle</h2>
 </hgroup>
 
+{# ---- Status do PC (recolhivel, comeca FECHADO para nao poluir) ---- #}
 <article>
-    <header><strong>Status do PC</strong></header>
-    <div id="status-box"
-         hx-get="/status-fragment"
-         hx-trigger="load, every 15s"
-         hx-swap="innerHTML">
-        <p aria-busy="true">Verificando...</p>
-    </div>
+    <details>
+        <summary style="cursor: pointer; font-weight: bold;">🖥️ Status do PC</summary>
+        <div id="status-box"
+             hx-get="/status-fragment"
+             hx-trigger="load, every 15s"
+             hx-swap="innerHTML"
+             style="margin-top: 0.75rem;">
+            <p aria-busy="true">Verificando...</p>
+        </div>
+    </details>
 </article>
 
+{# ---- Cards dos jogos ---- #}
 {% for game_id, g in games.items() %}
 <article>
     <header><strong>{{ g.emoji }} {{ g.nome }}</strong></header>
@@ -26,10 +31,64 @@
 </article>
 {% endfor %}
 
+{# ---- Secao de Estatisticas (recolhivel, iframes do Grafana) ---- #}
+<article>
+    <details>
+        <summary style="cursor: pointer; font-weight: bold;">📊 Estatísticas (FinOps & Gamer)</summary>
+        <div style="margin-top: 1rem;">
+            <p><small style="color: var(--pico-muted-color);">
+                Dados processados no servidor (Grafana). Pode levar um instante para carregar.
+            </small></p>
+
+            <h4>💰 FinOps — Custos e Recursos</h4>
+            <iframe
+                src="{{ grafana_base }}/d-solo/finops-homelab/finops?orgId=1&panelId=1&theme=dark&refresh=30s"
+                width="100%" height="200" frameborder="0" loading="lazy"
+                style="border-radius: 8px; margin-bottom: 1rem;"></iframe>
+            <iframe
+                src="{{ grafana_base }}/d-solo/finops-homelab/finops?orgId=1&panelId=4&theme=dark&refresh=30s"
+                width="100%" height="250" frameborder="0" loading="lazy"
+                style="border-radius: 8px; margin-bottom: 1rem;"></iframe>
+
+            <h4>🏆 Gamer Stats — Jogadores e Atividade</h4>
+            <iframe
+                src="{{ grafana_base }}/d-solo/gamer-stats/gamer-stats?orgId=1&panelId=1&theme=dark&refresh=30s"
+                width="100%" height="250" frameborder="0" loading="lazy"
+                style="border-radius: 8px; margin-bottom: 1rem;"></iframe>
+            <iframe
+                src="{{ grafana_base }}/d-solo/gamer-stats/gamer-stats?orgId=1&panelId=2&theme=dark&refresh=30s"
+                width="100%" height="250" frameborder="0" loading="lazy"
+                style="border-radius: 8px; margin-bottom: 1rem;"></iframe>
+
+            <p style="margin-top: 0.5rem;">
+                <a href="{{ grafana_base }}/d/finops-homelab" target="_blank" rel="noopener">
+                    Ver dashboard FinOps completo →</a>
+            </p>
+            <p>
+                <a href="{{ grafana_base }}/d/gamer-stats" target="_blank" rel="noopener">
+                    Ver dashboard Gamer completo →</a>
+            </p>
+        </div>
+    </details>
+</article>
+
+{# ---- Links uteis (Grafana / ArgoCD) ---- #}
+<article>
+    <header><strong>🔗 Ferramentas</strong></header>
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+        <a href="{{ grafana_base }}" target="_blank" rel="noopener" role="button" class="outline">
+            📈 Grafana</a>
+        <a href="{{ argocd_base }}" target="_blank" rel="noopener" role="button" class="outline">
+            🚀 ArgoCD</a>
+    </div>
+</article>
+
 {% if tunnel_url %}
 <article>
-    <header><strong>🌐 Painel (acesso externo)</strong></header>
-    <p><a href="{{ tunnel_url }}" target="_blank" rel="noopener">{{ tunnel_url }}</a></p>
+    <details>
+        <summary style="cursor: pointer; color: var(--pico-muted-color);">🌐 Acesso externo do painel</summary>
+        <p style="margin-top: 0.5rem;"><a href="{{ tunnel_url }}" target="_blank" rel="noopener">{{ tunnel_url }}</a></p>
+    </details>
 </article>
 {% endif %}
 
