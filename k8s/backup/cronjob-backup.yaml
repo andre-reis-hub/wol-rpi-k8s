@@ -4,7 +4,6 @@ metadata:
   name: wol-backup
   namespace: backup
 spec:
-  # Diario as 3h da manha (horario do cluster - conferir TZ)
   schedule: "0 3 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
@@ -22,10 +21,10 @@ spec:
               {{- with secret "wol/data/backup" -}}
               {{ index .Data.data "restic-password" }}
               {{- end -}}
-            vault.hashicorp.com/agent-inject-secret-rclone-conf: "wol/data/rclone"
-            vault.hashicorp.com/agent-inject-template-rclone-conf: |
+            vault.hashicorp.com/agent-inject-secret-rclone-conf-b64: "wol/data/rclone"
+            vault.hashicorp.com/agent-inject-template-rclone-conf-b64: |
               {{- with secret "wol/data/rclone" -}}
-              {{ index .Data.data "rclone-conf" }}
+              {{ index .Data.data "rclone-conf-b64" }}
               {{- end -}}
             vault.hashicorp.com/agent-pre-populate-only: "true"
         spec:
@@ -37,7 +36,7 @@ spec:
               command: ["/bin/sh", "-c"]
               args:
                 - |
-                  apk add --no-cache rclone bash >/dev/null 2>&1 || true
+                  apk add --no-cache rclone bash coreutils >/dev/null 2>&1 || true
                   bash /scripts/backup.sh
               volumeMounts:
                 - name: script
@@ -59,11 +58,11 @@ spec:
             - name: palworld
               hostPath:
                 path: /var/lib/rancher/palworld
-                type: Directory
+                type: DirectoryOrCreate
             - name: abiotic
               hostPath:
                 path: /var/lib/rancher/abiotic-factor
-                type: Directory
+                type: DirectoryOrCreate
             - name: valheim
               hostPath:
                 path: /var/lib/rancher/valheim

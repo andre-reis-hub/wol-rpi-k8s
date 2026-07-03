@@ -7,44 +7,34 @@ data:
   backup.sh: |
     #!/bin/bash
     set -euo pipefail
-
     echo "[backup] Iniciando $(date)"
 
-    # Credenciais vindas do Vault (injetadas em /vault/secrets/)
+    # Senha do restic (injetada pelo Vault Agent)
     export RESTIC_PASSWORD="$(cat /vault/secrets/restic-password)"
+
+    # rclone.conf vem em base64 do Vault -> decodifica
     mkdir -p ~/.config/rclone
-    cp /vault/secrets/rclone-conf ~/.config/rclone/rclone.conf
+    base64 -d /vault/secrets/rclone-conf-b64 > ~/.config/rclone/rclone.conf
 
     REPO="rclone:gdrive:wol-backups"
 
-    # Inicializa o repo restic se ainda nao existe (primeira vez)
+    # Inicializa o repo restic na primeira vez
     if ! restic -r "$REPO" snapshots >/dev/null 2>&1; then
       echo "[backup] Inicializando repositorio restic..."
       restic -r "$REPO" init
     fi
 
-    # Exporta segredos do Vault (KV wol/*) para incluir no backup
-    echo "[backup] Exportando segredos do Vault..."
-    mkdir -p /tmp/vault-export
-    export VAULT_ADDR="http://vault.vault.svc.cluster.local:8200"
-    export VAULT_TOKEN="$(cat /vault/secrets/vault-token 2>/dev/null || echo '')"
-    # (o export do vault e best-effort; os saves sao a prioridade)
-    for k in palworld abiotic-factor valheim backup; do
-      vault kv get -format=json "wol/$k" > "/tmp/vault-export/$k.json" 2>/dev/null || true
-    done
-
-    # Backup dos saves + export do vault
+    # Backup dos saves dos jogos
     echo "[backup] Rodando restic backup..."
     restic -r "$REPO" backup \
       /data/palworld \
       /data/abiotic-factor \
       /data/valheim \
-      /tmp/vault-export \
-      --tag "auto-$(date +%Y%m%d)"
+      --tag "auto-$(date +%Y%m%d)" \
+      --host wol-rpi-k8s
 
     # Retencao: manter 7 diarios
     echo "[backup] Aplicando retencao (7 diarios)..."
     restic -r "$REPO" forget --keep-daily 7 --prune
 
     echo "[backup] Concluido $(date)"
-    rm -rf /tmp/vault-export
