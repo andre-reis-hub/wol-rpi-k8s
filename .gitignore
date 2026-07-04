@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 venv/
 *.egg-info/
+site/k8s-ca.crt
+site/.env
