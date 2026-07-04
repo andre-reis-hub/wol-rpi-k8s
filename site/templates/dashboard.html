@@ -102,4 +102,23 @@ function copyAddr(game) {
     });
 }
 </script>
+
+{% if session.get('role') == 'admin' %}
+<article>
+    <header><strong>💾 Backup</strong></header>
+    <p><small style="color: var(--pico-muted-color);">
+        Dispara backup manual dos saves + Vault para o Google Drive.
+    </small></p>
+    <div id="backup-box">
+        <button hx-post="/backup/start"
+                hx-target="#backup-box"
+                hx-swap="innerHTML"
+                hx-confirm="Iniciar um backup manual agora?">
+            💾 Fazer backup agora
+        </button>
+    </div>
+    <div hx-get="/backup/status" hx-trigger="load, every 30s" hx-swap="innerHTML"
+         style="margin-top:0.5rem;"></div>
+</article>
+{% endif %}
 {% endblock %}
