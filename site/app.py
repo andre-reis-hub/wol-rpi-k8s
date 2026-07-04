@@ -74,6 +74,16 @@ GAMES = {
         'chat_filtro': 'CHAT LOG:',
         'chat_regex': r'CHAT LOG:\s+(\S+)\s+(.+)$',
     },
+    'valheim': {
+        'nome': 'Valheim',
+        'emoji': '🛡️',
+        'namespace': 'valheim',
+        'deployment': 'valheim-server',
+        'porta_conexao': 30456,
+        'fonte_players': 'loki_valheim',
+        'chat_filtro': None,
+        'chat_regex': None,
+    },
 }
 
 # Padroes que NAO sao chat de jogador (filtrar para nao poluir)
@@ -205,6 +215,10 @@ def get_loki_players(game):
 def get_loki_chat(game, limite=CHAT_LIMIT):
     """Ultimas N mensagens de chat do jogo via Loki."""
     g = GAMES[game]
+def get_loki_chat(game, limite=CHAT_LIMIT):
+    g = GAMES[game]
+    if not g.get('chat_filtro') or not g.get('chat_regex'):
+        return []
     chat_re = g.get('chat_regex')
     if not chat_re:
         return []
@@ -237,12 +251,56 @@ def get_players(game, ligado):
     g = GAMES[game]
     if g['fonte_players'] == 'rest':
         return get_palworld_players(), True
+    elif g['fonte_players'] == 'loki_valheim':
+        nomes = get_valheim_players()
+        if nomes is None:
+            return [], False
+        return nomes, True
     else:
         nomes = get_loki_players(game)
         if nomes is None:
             return [], False
         return nomes, True
 
+def get_valheim_players():
+    """Valheim: rastreia sessoes por SteamID.
+    - 'Got connection SteamID X' abre sessao X
+    - 'Got character ZDOID from Nome' associa Nome ao ultimo SteamID aberto
+    - 'Closing socket X' fecha a sessao X
+    Retorna lista de nomes online."""
+    import re
+    logql = ('{namespace="valheim"} |~ '
+    '"Got connection SteamID|Got character ZDOID from|Closing socket"')
+    result = _loki_query_range(logql, LOKI_WINDOW_HOURS)
+    if result is None:
+        return None
+    re_sid   = re.compile(r'Got connection SteamID (\d+)')
+    re_char  = re.compile(r'Got character ZDOID from (.+?) :')
+    re_close = re.compile(r'Closing socket (\d+)')
+    # Junta todas as linhas de todos os streams e ordena por timestamp
+    eventos = []
+    for stream in result:
+        for ts, line in stream.get('values', []):
+            eventos.append((int(ts), line))
+    eventos.sort(key=lambda x: x[0])
+    online = {}              # steamid -> nome
+    last_open_no_name = None
+    for ts, line in eventos:
+        m_sid = re_sid.search(line)
+        m_char = re_char.search(line)
+        m_close = re_close.search(line)
+        if m_sid:
+            sid = m_sid.group(1)
+            online[sid] = None
+            last_open_no_name = sid
+        elif m_char:
+            nome = m_char.group(1).strip()
+            if last_open_no_name:
+                online[last_open_no_name] = nome
+                last_open_no_name = None
+        elif m_close:
+            online.pop(m_close.group(1), None)
+    return [n for n in online.values() if n]
 
 def get_tunnel_url():
     return os.environ.get('TUNNEL_URL')
@@ -292,7 +350,13 @@ def logout():
 @app.route('/')
 @login_required
 def dashboard():
-    return render_template('dashboard.html', games=GAMES, tunnel_url=get_tunnel_url())
+    return render_template(
+        'dashboard.html',
+        games=GAMES,
+        tunnel_url=get_tunnel_url(),
+        grafana_base=os.environ.get('GRAFANA_BASE', 'https://grafana.areis-solution.com'),
+        argocd_base=os.environ.get('ARGOCD_BASE', 'https://argocd.areis-solution.com'),
+    )
 
 
 @app.route('/status-fragment')
