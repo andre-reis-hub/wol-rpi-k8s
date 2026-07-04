@@ -202,3 +202,48 @@ host (7777/27015). Ajustes feitos:
 
 **Licao:** Jogos com EOS podem exigir hostNetwork para funcionar com
 cliente+servidor no mesmo host. Steam networking (Palworld) e mais flexivel.
+
+---
+
+## Incidente 20 — Disk-pressure derruba o cluster (root pequeno)
+
+**Sintoma:** Grafana, ArgoCD, Prometheus e Loki cairam juntos. Centenas de pods
+em Evicted/Unknown. Cluster instavel por horas.
+
+**Causa raiz:** Root (/) de 29GB chegou a 90%. O kubelet ativa DiskPressure
+acima de ~85% e despeja pods. Controllers recriavam, eram despejados de novo =
+ciclo vicioso. O que enchia: imagens de container + snapd (revisoes antigas).
+
+**Solucao imediata:** journalctl --vacuum-size=100M, apt clean, remover snaps
+antigos, kubectl delete pods com status != Running.
+
+**Solucao definitiva:** Root de 29GB -> 75GB (depois 150GB com LVM). Containerd
+data-root movido para o disco de 526GB via symlink.
+
+**Licao:** Root >= 100GB para node k8s. Monitorar disco (dashboard FinOps mostra).
+
+---
+
+## Incidente 21 — Perda de dados por rm -rf em disco montado + backup
+
+**Sintoma:** `rm -rf /var/lib/rancher/*` apagou saves dos jogos, storage do
+Vault, Prometheus, Loki e containerd (disco de 526GB).
+
+**Causa raiz:** O `umount /var/lib/rancher` FALHOU silenciosamente (kubelet/
+containerd seguravam o disco), mas o rm-rf rodou mesmo assim, no disco montado.
+Agravante: NAO havia backup.
+
+**Recuperacao:** etcd (em /var/lib/etcd, disco root, intacto) preservou a
+estrutura do cluster. Recriar pastas + corrigir symlink orfao do containerd
+restaurou o cluster. Vault reinicializado do zero (init + reconfig KV/auth/
+policies/roles via add-game-secret.sh).
+
+**Solucao definitiva:** Backup restic+rclone -> Google Drive (cifrado,
+incremental, retencao 7 dias, CronJob diario 3h, credenciais no Vault).
+Restore TESTADO. Ver GUIA-BACKUP.md e GUIA-RESTORE.md.
+
+**Licoes:**
+1. NUNCA rm -rf em path de disco sem confirmar umount (mount | grep depois).
+2. Backup nao e opcional; sem restore testado nao esta pronto.
+3. Restore no i9 exige -o rclone.connections=1 (senao timeout).
+4. Auto-unseal: apos re-init do Vault, atualizar /etc/vault/unseal-key.
