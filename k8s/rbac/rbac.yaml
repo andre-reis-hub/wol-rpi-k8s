@@ -77,3 +77,30 @@ metadata:
   annotations:
     kubernetes.io/service-account.name: panel-controller
 type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: game-scaler
+  namespace: valheim
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: panel-game-scaler
+  namespace: valheim
+subjects:
+  - kind: ServiceAccount
+    name: panel-controller
+    namespace: kube-system
+roleRef:
+  kind: Role
+  name: game-scaler
+  apiGroup: rbac.authorization.k8s.io
