@@ -74,3 +74,13 @@ restic -r "$REPO" restore latest --target /tmp/teste-restore
 ls -la /tmp/teste-restore/data/*/
 rm -rf /tmp/teste-restore
 ```
+
+## IMPORTANTE — parametro obrigatorio no i9
+
+Ao restaurar/listar do i9, use SEMPRE `-o rclone.connections=1`, senao o restic
+da timeout com o Google Drive:
+
+restic -o rclone.connections=1 -r rclone:gdrive:wol-backups snapshots
+restic -o rclone.connections=1 -r rclone:gdrive:wol-backups restore latest --target /tmp/restore
+Descoberto no incidente 21 (recuperacao). Sem esse parametro:
+"context deadline exceeded".
