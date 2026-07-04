@@ -57,7 +57,7 @@ GAMES = {
         'log_leave': 'left the server',
         'log_name_regex': r'(\w[\w .-]*) joined the server',
         'log_leave_name_regex': r'(\w[\w .-]*) left the server',
-        'chat_filtro': r'\\[CHAT\\]',
+        'chat_filtro': r'\\[CHAT\\] <',
         'chat_regex': r'\[CHAT\]\s+<([^>]+)>\s+(.+)$',
     },
     'abiotic-factor': {
@@ -215,14 +215,9 @@ def get_loki_players(game):
 def get_loki_chat(game, limite=CHAT_LIMIT):
     """Ultimas N mensagens de chat do jogo via Loki."""
     g = GAMES[game]
-def get_loki_chat(game, limite=CHAT_LIMIT):
-    g = GAMES[game]
     if not g.get('chat_filtro') or not g.get('chat_regex'):
         return []
-    chat_re = g.get('chat_regex')
-    if not chat_re:
-        return []
-    chat_re = re.compile(chat_re)
+    chat_re = re.compile(g['chat_regex'])
     ns = g['namespace']
     logql = f'{{namespace="{ns}"}} |~ "{g["chat_filtro"]}"'
     result = _loki_query_range(logql, LOKI_WINDOW_HOURS)
@@ -449,6 +444,49 @@ def register():
     save_state(state)
     return {'ok': True}
 
+
+@app.route('/backup/start', methods=['POST'])
+@login_required
+@admin_required
+def backup_start():
+    import json as _json
+    nome = f"backup-manual-{int(datetime.utcnow().timestamp())}"
+    url_cj = f"{K8S_API}/apis/batch/v1/namespaces/backup/cronjobs/wol-backup"
+    r = requests.get(url_cj, headers=_k8s_headers(), verify=_k8s_verify(), timeout=5)
+    if r.status_code != 200:
+        return '<p><strong class="status-offline">Erro ao ler CronJob.</strong></p>'
+    job_spec = r.json()['spec']['jobTemplate']['spec']
+    body = {"apiVersion": "batch/v1", "kind": "Job",
+            "metadata": {"name": nome, "namespace": "backup"}, "spec": job_spec}
+    url_job = f"{K8S_API}/apis/batch/v1/namespaces/backup/jobs"
+    headers = _k8s_headers(); headers['Content-Type'] = 'application/json'
+    r2 = requests.post(url_job, headers=headers, data=_json.dumps(body),
+                       verify=_k8s_verify(), timeout=8)
+    if r2.status_code in (200, 201):
+        return ('<p><strong class="status-online">✅ Backup iniciado!</strong></p>'
+                '<div hx-get="/backup/status" hx-trigger="load, every 10s" hx-swap="innerHTML"></div>')
+    return f'<p><strong class="status-offline">Erro ao criar job: {r2.status_code}</strong></p>'
+
+
+@app.route('/backup/status')
+@login_required
+def backup_status():
+    url = f"{K8S_API}/apis/batch/v1/namespaces/backup/jobs"
+    r = requests.get(url, headers=_k8s_headers(), verify=_k8s_verify(), timeout=5)
+    if r.status_code != 200:
+        return '<p><small>Status indisponivel.</small></p>'
+    jobs = r.json().get('items', [])
+    jobs.sort(key=lambda j: j['metadata'].get('creationTimestamp', ''), reverse=True)
+    linhas = []
+    for j in jobs[:3]:
+        nome = j['metadata']['name']
+        st = j.get('status', {})
+        if st.get('succeeded'): estado = '✅ Concluido'
+        elif st.get('active'): estado = '⏳ Rodando...'
+        elif st.get('failed'): estado = '❌ Falhou'
+        else: estado = '… Iniciando'
+        linhas.append(f'<li>{nome}: {estado}</li>')
+    return '<ul style="font-size:0.85rem;">' + ''.join(linhas) + '</ul>'
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, threaded=True)

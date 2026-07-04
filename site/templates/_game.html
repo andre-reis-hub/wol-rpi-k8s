@@ -7,8 +7,7 @@
 {% if metrics %}
 <p>
     <strong>{{ metrics.currentplayernum }}/{{ metrics.maxplayernum }}</strong> jogadores
-    · {{ metrics.serverfps }} FPS
-    · dia {{ metrics.days }}
+    · {{ metrics.serverfps }} FPS · dia {{ metrics.days }}
 </p>
 {% endif %}
 
@@ -20,11 +19,11 @@
     {% endfor %}
 </p>
 {% elif not metrics %}
-{% if fonte_ok %}
-<p><small style="color: var(--pico-muted-color);">Nenhum jogador online no momento.</small></p>
-{% else %}
-<p><small style="color: var(--pico-muted-color);">Servidor iniciando ou logs indisponíveis...</small></p>
-{% endif %}
+    {% if fonte_ok %}
+    <p><small style="color: var(--pico-muted-color);">Nenhum jogador online no momento.</small></p>
+    {% else %}
+    <p><small style="color: var(--pico-muted-color);">Servidor iniciando ou logs indisponíveis...</small></p>
+    {% endif %}
 {% endif %}
 
 <p style="margin-bottom: 0.25rem;"><small style="color: var(--pico-muted-color);">Endereço de conexão:</small></p>
@@ -35,27 +34,7 @@
     <span id="copied-{{ game }}" style="color: #2dc653; display: none;">✓</span>
 </div>
 
-{% if is_admin %}
-<form hx-post="/game/{{ game }}/stop"
-      hx-target="#game-box-{{ game }}"
-      hx-swap="innerHTML"
-      hx-confirm="Desligar o servidor de {{ g.nome }}?"
-      style="margin-top: 0.75rem;">
-    <button type="submit" class="outline secondary">⏻ Desligar servidor</button>
-</form>
-{% endif %}
-
-{% else %}
-<p><strong class="status-offline">○ Servidor Desligado</strong></p>
-<form hx-post="/game/{{ game }}/start"
-      hx-target="#game-box-{{ game }}"
-      hx-swap="innerHTML"
-      style="margin-top: 0.75rem;">
-    <button type="submit">▶ Ligar servidor</button>
-</form>
-{% endif %}
-
-{# ---- Chat recente (sempre que houver historico) ---- #}
+{# ---- Chat recente (recolhivel) ---- #}
 {% if chat %}
 <details style="margin-top: 0.85rem;">
     <summary style="cursor: pointer; color: var(--pico-muted-color); font-size: 0.9rem;">
@@ -70,4 +49,43 @@
         {% endfor %}
     </div>
 </details>
+{% endif %}
+
+{# ---- Botao desligar (so admin) - FORA de qualquer recolhimento ---- #}
+{% if is_admin %}
+<form hx-post="/game/{{ game }}/stop"
+      hx-target="#game-box-{{ game }}"
+      hx-swap="innerHTML"
+      hx-confirm="Desligar o servidor de {{ g.nome }}?"
+      style="margin-top: 0.75rem;">
+    <button type="submit" class="outline secondary">⏻ Desligar servidor</button>
+</form>
+{% endif %}
+
+{% else %}
+{# ---- Servidor desligado: botao LIGAR sempre visivel (fora de recolhimento) ---- #}
+<p><strong class="status-offline">○ Servidor Desligado</strong></p>
+<form hx-post="/game/{{ game }}/start"
+      hx-target="#game-box-{{ game }}"
+      hx-swap="innerHTML"
+      style="margin-top: 0.75rem;">
+    <button type="submit">▶ Ligar servidor</button>
+</form>
+
+{# Chat historico tambem quando desligado #}
+{% if chat %}
+<details style="margin-top: 0.85rem;">
+    <summary style="cursor: pointer; color: var(--pico-muted-color); font-size: 0.9rem;">
+        💬 Chat recente ({{ chat|length }})
+    </summary>
+    <div style="margin-top: 0.4rem; max-height: 220px; overflow-y: auto; font-size: 0.88rem; line-height: 1.5;">
+        {% for m in chat %}
+        <div style="padding: 0.15rem 0;">
+            <strong style="color: var(--pico-primary);">{{ m.nome }}:</strong>
+            <span>{{ m.msg }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</details>
+{% endif %}
 {% endif %}
