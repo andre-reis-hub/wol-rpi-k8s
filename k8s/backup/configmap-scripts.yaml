@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-ops-scripts
+  namespace: backup
+data:
+  # Backup de UM jogo especifico (recebe JOGO via env)
+  backup-game.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    JOGO="${JOGO:?precisa definir JOGO}"
+    echo "[backup-game] Backup de $JOGO iniciado $(date)"
+    export RESTIC_PASSWORD="$(cat /vault/secrets/restic-password)"
+    mkdir -p ~/.config/rclone
+    base64 -d /vault/secrets/rclone-conf-b64 > ~/.config/rclone/rclone.conf
+    REPO="rclone:gdrive:wol-backups"
+    restic -o rclone.connections=1 -r "$REPO" snapshots >/dev/null 2>&1 || restic -o rclone.connections=1 -r "$REPO" init
+    restic -o rclone.connections=1 -r "$REPO" backup "/data/$JOGO" \
+      --tag "manual-$JOGO-$(date +%Y%m%d-%H%M%S)" --host wol-rpi-k8s
+    echo "[backup-game] Concluido $(date)"
+
+  # Restore de UM jogo a partir de um SNAPSHOT_ID especifico
+  restore-game.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    JOGO="${JOGO:?precisa definir JOGO}"
+    SNAPSHOT_ID="${SNAPSHOT_ID:?precisa definir SNAPSHOT_ID}"
+    echo "[restore] Restaurando $JOGO do snapshot $SNAPSHOT_ID $(date)"
+    export RESTIC_PASSWORD="$(cat /vault/secrets/restic-password)"
+    mkdir -p ~/.config/rclone
+    base64 -d /vault/secrets/rclone-conf-b64 > ~/.config/rclone/rclone.conf
+    REPO="rclone:gdrive:wol-backups"
+    # Restaura para /restore-tmp e depois substitui os saves do jogo
+    rm -rf /restore-tmp && mkdir -p /restore-tmp
+    restic -o rclone.connections=1 -r "$REPO" restore "$SNAPSHOT_ID" \
+      --target /restore-tmp --include "/data/$JOGO"
+    # Limpa os saves atuais e coloca os restaurados
+    if [ -d "/restore-tmp/data/$JOGO" ]; then
+      rm -rf "/data/$JOGO"/*
+      cp -a "/restore-tmp/data/$JOGO/." "/data/$JOGO/"
+      echo "[restore] Saves de $JOGO restaurados."
+    else
+      echo "[restore] ERRO: snapshot nao contem /data/$JOGO"
+      exit 1
+    fi
+    rm -rf /restore-tmp
+    echo "[restore] Concluido $(date)"
+
+  # Reset: BACKUP antes + APAGA o save do jogo (mundo novo no proximo start)
+  reset-game.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    JOGO="${JOGO:?precisa definir JOGO}"
+    echo "[reset] Reset de $JOGO iniciado $(date)"
+    export RESTIC_PASSWORD="$(cat /vault/secrets/restic-password)"
+    mkdir -p ~/.config/rclone
+    base64 -d /vault/secrets/rclone-conf-b64 > ~/.config/rclone/rclone.conf
+    REPO="rclone:gdrive:wol-backups"
+    # 1) Backup de seguranca ANTES de apagar (rede de seguranca)
+    echo "[reset] Backup de seguranca antes do reset..."
+    restic -o rclone.connections=1 -r "$REPO" backup "/data/$JOGO" \
+      --tag "pre-reset-$JOGO-$(date +%Y%m%d-%H%M%S)" --host wol-rpi-k8s
+    # 2) Apaga o conteudo do save (mundo novo sera criado no proximo start)
+    echo "[reset] Apagando save atual de $JOGO..."
+    rm -rf "/data/$JOGO"/*
+    echo "[reset] Concluido. Proximo start cria mundo novo. $(date)"

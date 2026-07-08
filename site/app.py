@@ -521,5 +521,215 @@ def backup_status():
         linhas.append(f'<li>{nome}: {estado}</li>')
     return '<ul style="font-size:0.85rem;">' + ''.join(linhas) + '</ul>'
 
+# =====================================================================
+# ROTAS DE BACKUP/RESTORE/RESET POR JOGO
+# Inserir estas rotas no app.py (antes do if __name__ == '__main__')
+# =====================================================================
+
+def _criar_job_ops(nome, script_key, env_extra):
+    """Cria um Job na namespace backup que roda um dos scripts de
+    backup-ops-scripts, com as credenciais do Vault injetadas e os
+    volumes dos saves montados. env_extra: dict de variaveis (JOGO, etc)."""
+    import json as _json
+    env_list = [{"name": k, "value": v} for k, v in env_extra.items()]
+    body = {
+        "apiVersion": "batch/v1", "kind": "Job",
+        "metadata": {"name": nome, "namespace": "backup"},
+        "spec": {
+            "backoffLimit": 1,
+            "template": {
+                "metadata": {"annotations": {
+                    "vault.hashicorp.com/agent-inject": "true",
+                    "vault.hashicorp.com/role": "backup",
+                    "vault.hashicorp.com/agent-inject-secret-restic-password": "wol/data/backup",
+                    "vault.hashicorp.com/agent-inject-template-restic-password":
+                        '{{- with secret "wol/data/backup" -}}\n{{ index .Data.data "restic-password" }}\n{{- end -}}',
+                    "vault.hashicorp.com/agent-inject-secret-rclone-conf-b64": "wol/data/rclone",
+                    "vault.hashicorp.com/agent-inject-template-rclone-conf-b64":
+                        '{{- with secret "wol/data/rclone" -}}\n{{ index .Data.data "rclone-conf-b64" }}\n{{- end -}}',
+                    "vault.hashicorp.com/agent-pre-populate-only": "true",
+                }},
+                "spec": {
+                    "serviceAccountName": "backup-sa",
+                    "restartPolicy": "Never",
+                    "containers": [{
+                        "name": "ops",
+                        "image": "restic/restic:latest",
+                        "command": ["/bin/sh", "-c"],
+                        "args": [f"apk add --no-cache rclone bash coreutils >/dev/null 2>&1 || true; bash /scripts/{script_key}"],
+                        "env": env_list,
+                        "volumeMounts": [
+                            {"name": "scripts", "mountPath": "/scripts"},
+                            {"name": "palworld", "mountPath": "/data/palworld"},
+                            {"name": "abiotic", "mountPath": "/data/abiotic-factor"},
+                            {"name": "valheim", "mountPath": "/data/valheim"},
+                        ],
+                    }],
+                    "volumes": [
+                        {"name": "scripts", "configMap": {"name": "backup-ops-scripts", "defaultMode": 493}},
+                        {"name": "palworld", "hostPath": {"path": "/var/lib/rancher/palworld", "type": "DirectoryOrCreate"}},
+                        {"name": "abiotic", "hostPath": {"path": "/var/lib/rancher/abiotic-factor", "type": "DirectoryOrCreate"}},
+                        {"name": "valheim", "hostPath": {"path": "/var/lib/rancher/valheim", "type": "DirectoryOrCreate"}},
+                    ],
+                },
+            },
+        },
+    }
+    url = f"{K8S_API}/apis/batch/v1/namespaces/backup/jobs"
+    headers = _k8s_headers(); headers['Content-Type'] = 'application/json'
+    r = requests.post(url, headers=headers, data=_json.dumps(body), verify=_k8s_verify(), timeout=8)
+    return r.status_code in (200, 201)
+
+
+# ---- Backup de um jogo especifico ----
+@app.route('/backup/game/<game>', methods=['POST'])
+@login_required
+@admin_required
+def backup_game(game):
+    if game not in GAMES:
+        return '', 404
+    ns = GAMES[game]['namespace']
+    nome = f"bkp-{ns}-{int(datetime.utcnow().timestamp())}"
+    ok = _criar_job_ops(nome, "backup-game.sh", {"JOGO": ns})
+    if ok:
+        return (f'<p><strong class="status-online">✅ Backup de {GAMES[game]["nome"]} iniciado!</strong></p>'
+                '<div hx-get="/backup/status" hx-trigger="load, every 10s" hx-swap="innerHTML"></div>')
+    return '<p><strong class="status-offline">Erro ao iniciar backup.</strong></p>'
+
+
+# ---- Reset de um jogo (backup automatico + apaga save) ----
+@app.route('/backup/reset/<game>', methods=['POST'])
+@login_required
+@admin_required
+def reset_game(game):
+    if game not in GAMES:
+        return '', 404
+    ns = GAMES[game]['namespace']
+    # Desliga o servidor antes (nao pode apagar save com jogo rodando)
+    scale_game(game, 0)
+    nome = f"reset-{ns}-{int(datetime.utcnow().timestamp())}"
+    ok = _criar_job_ops(nome, "reset-game.sh", {"JOGO": ns})
+    if ok:
+        return (f'<p><strong class="status-online">✅ Reset de {GAMES[game]["nome"]} iniciado!</strong></p>'
+                '<p><small>Backup de seguranca feito + save apagado. '
+                'Ligue o servidor para criar o mundo novo.</small></p>'
+                '<div hx-get="/backup/status" hx-trigger="load, every 10s" hx-swap="innerHTML"></div>')
+    return '<p><strong class="status-offline">Erro ao resetar.</strong></p>'
+
+
+# ---- Restore: listar snapshots disponiveis de um jogo ----
+# Como listar snapshots exige rodar restic, usamos um Job que grava o
+# resultado num ConfigMap OU consultamos via um Job de listagem.
+# Abordagem simples: o painel dispara um job de listagem que escreve a
+# saida nos logs, e o painel le os logs.
+@app.route('/backup/list/<game>')
+@login_required
+@admin_required
+def backup_list(game):
+    if game not in GAMES:
+        return '', 404
+    ns = GAMES[game]['namespace']
+    # Dispara um job efemero que lista os snapshots em JSON nos logs
+    import json as _json
+    nome = f"list-{ns}-{int(datetime.utcnow().timestamp())}"
+    script = (
+        'export RESTIC_PASSWORD="$(cat /vault/secrets/restic-password)"; '
+        'mkdir -p ~/.config/rclone; '
+        'base64 -d /vault/secrets/rclone-conf-b64 > ~/.config/rclone/rclone.conf; '
+        'apk add --no-cache rclone >/dev/null 2>&1 || true; '
+        f'restic -o rclone.connections=1 -r rclone:gdrive:wol-backups snapshots '
+        f'--tag manual-{ns} --tag pre-reset-{ns} --tag auto-$(date +%Y%m%d) --json 2>/dev/null || '
+        f'restic -o rclone.connections=1 -r rclone:gdrive:wol-backups snapshots --json'
+    )
+    # (a listagem completa e filtrada no painel)
+    body = {
+        "apiVersion": "batch/v1", "kind": "Job",
+        "metadata": {"name": nome, "namespace": "backup"},
+        "spec": {"backoffLimit": 0, "ttlSecondsAfterFinished": 120,
+            "template": {"metadata": {"annotations": {
+                    "vault.hashicorp.com/agent-inject": "true",
+                    "vault.hashicorp.com/role": "backup",
+                    "vault.hashicorp.com/agent-inject-secret-restic-password": "wol/data/backup",
+                    "vault.hashicorp.com/agent-inject-template-restic-password":
+                        '{{- with secret "wol/data/backup" -}}\n{{ index .Data.data "restic-password" }}\n{{- end -}}',
+                    "vault.hashicorp.com/agent-inject-secret-rclone-conf-b64": "wol/data/rclone",
+                    "vault.hashicorp.com/agent-inject-template-rclone-conf-b64":
+                        '{{- with secret "wol/data/rclone" -}}\n{{ index .Data.data "rclone-conf-b64" }}\n{{- end -}}',
+                    "vault.hashicorp.com/agent-pre-populate-only": "true"}},
+                "spec": {"serviceAccountName": "backup-sa", "restartPolicy": "Never",
+                    "containers": [{"name": "list", "image": "restic/restic:latest",
+                        "command": ["/bin/sh", "-c"], "args": [script]}]}}}}
+    url = f"{K8S_API}/apis/batch/v1/namespaces/backup/jobs"
+    headers = _k8s_headers(); headers['Content-Type'] = 'application/json'
+    requests.post(url, headers=headers, data=_json.dumps(body), verify=_k8s_verify(), timeout=8)
+    # Retorna um placeholder que faz polling do resultado
+    return (f'<p><small>Buscando backups de {GAMES[game]["nome"]}...</small></p>'
+            f'<div hx-get="/backup/list-result/{game}/{nome}" hx-trigger="load delay:6s, every 5s" hx-swap="innerHTML"></div>')
+
+
+@app.route('/backup/list-result/<game>/<jobname>')
+@login_required
+@admin_required
+def backup_list_result(game, jobname):
+    import json as _json
+    ns = GAMES[game]['namespace']
+    # Le os logs do pod do job de listagem
+    url_pods = f"{K8S_API}/api/v1/namespaces/backup/pods?labelSelector=job-name={jobname}"
+    r = requests.get(url_pods, headers=_k8s_headers(), verify=_k8s_verify(), timeout=5)
+    if r.status_code != 200 or not r.json().get('items'):
+        return '<p><small>Ainda buscando...</small></p>'
+    pod = r.json()['items'][0]['metadata']['name']
+    url_log = f"{K8S_API}/api/v1/namespaces/backup/pods/{pod}/log?container=list"
+    rl = requests.get(url_log, headers=_k8s_headers(), verify=_k8s_verify(), timeout=5)
+    if rl.status_code != 200 or not rl.text.strip():
+        return '<p><small>Ainda buscando...</small></p>'
+    # Parse do JSON do restic
+    try:
+        linha = [l for l in rl.text.splitlines() if l.strip().startswith('[')]
+        snaps = _json.loads(linha[-1]) if linha else []
+    except Exception:
+        return '<p><small>Ainda processando...</small></p>'
+    # Filtra snapshots que contem este jogo
+    itens = []
+    for s in snaps:
+        paths = s.get('paths', [])
+        if any(f"/data/{ns}" in p for p in paths):
+            sid = s.get('short_id', s.get('id', '')[:8])
+            tempo = s.get('time', '')[:19].replace('T', ' ')
+            tags = ', '.join(s.get('tags', []))
+            itens.append((sid, tempo, tags))
+    if not itens:
+        return '<p><small>Nenhum backup encontrado para este jogo.</small></p>'
+    linhas = []
+    for sid, tempo, tags in itens[-15:][::-1]:
+        linhas.append(
+            f'<tr><td>{tempo}</td><td><small>{tags}</small></td>'
+            f'<td><form hx-post="/backup/restore/{game}/{sid}" hx-target="#backup-ops-box" '
+            f'hx-swap="innerHTML" hx-confirm="Restaurar {GAMES[game]["nome"]} do backup de {tempo}? '
+            f'O save atual sera substituido.">'
+            f'<button class="outline" style="padding:0.1rem 0.5rem;margin:0;">Restaurar</button>'
+            f'</form></td></tr>')
+    return ('<table style="font-size:0.82rem;"><thead><tr><th>Data/Hora</th><th>Tag</th><th></th></tr></thead>'
+            '<tbody>' + ''.join(linhas) + '</tbody></table>')
+
+
+# ---- Restore de um jogo a partir de um snapshot ----
+@app.route('/backup/restore/<game>/<snapshot>', methods=['POST'])
+@login_required
+@admin_required
+def restore_game(game, snapshot):
+    if game not in GAMES:
+        return '', 404
+    ns = GAMES[game]['namespace']
+    # Desliga o servidor antes de restaurar
+    scale_game(game, 0)
+    nome = f"restore-{ns}-{int(datetime.utcnow().timestamp())}"
+    ok = _criar_job_ops(nome, "restore-game.sh", {"JOGO": ns, "SNAPSHOT_ID": snapshot})
+    if ok:
+        return (f'<p><strong class="status-online">✅ Restore de {GAMES[game]["nome"]} iniciado!</strong></p>'
+                f'<p><small>Restaurando snapshot {snapshot}. '
+                'Ligue o servidor quando concluir.</small></p>'
+                '<div hx-get="/backup/status" hx-trigger="load, every 10s" hx-swap="innerHTML"></div>')
+    return '<p><strong class="status-offline">Erro ao restaurar.</strong></p>'
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, threaded=True)

@@ -103,6 +103,55 @@ function copyAddr(game) {
 }
 </script>
 
+{# ===== Seção de Backup/Restore/Reset (só admin) ===== #}
+{% if session.get('role') == 'admin' %}
+<article>
+    <header><strong>💾 Backup & Restore</strong></header>
+    <div id="backup-ops-box">
+        <p><small style="color: var(--pico-muted-color);">
+            Backup, restauração e reset por jogo.
+        </small></p>
+
+        {# Backup geral (todos os jogos) #}
+        <button hx-post="/backup/start" hx-target="#backup-ops-box" hx-swap="innerHTML"
+                hx-confirm="Fazer backup de TODOS os jogos agora?"
+                style="margin-bottom:0.5rem;">
+            💾 Backup de tudo
+        </button>
+
+        {# Por jogo: backup, listar/restaurar, reset #}
+        {% for game_id, g in games.items() %}
+        <details style="margin-bottom:0.4rem;">
+            <summary style="cursor:pointer;">{{ g.emoji }} {{ g.nome }}</summary>
+            <div style="margin:0.5rem 0 0.5rem 1rem; display:flex; gap:0.4rem; flex-wrap:wrap;">
+                <button class="outline" style="padding:0.2rem 0.6rem;margin:0;"
+                        hx-post="/backup/game/{{ game_id }}"
+                        hx-target="#backup-ops-box" hx-swap="innerHTML"
+                        hx-confirm="Fazer backup de {{ g.nome }} agora?">
+                    💾 Backup
+                </button>
+                <button class="outline" style="padding:0.2rem 0.6rem;margin:0;"
+                        hx-get="/backup/list/{{ game_id }}"
+                        hx-target="#backup-ops-box" hx-swap="innerHTML">
+                    🔄 Restaurar...
+                </button>
+                <button class="outline secondary" style="padding:0.2rem 0.6rem;margin:0;"
+                        hx-post="/backup/reset/{{ game_id }}"
+                        hx-target="#backup-ops-box" hx-swap="innerHTML"
+                        hx-confirm="⚠️ RESETAR {{ g.nome }}? Faz backup de seguranca e APAGA o mundo atual. Ao ligar, cria mundo novo. Confirmar?">
+                    🗑️ Reset
+                </button>
+            </div>
+        </details>
+        {% endfor %}
+    </div>
+    <div hx-get="/backup/status" hx-trigger="load, every 30s" hx-swap="innerHTML"
+         style="margin-top:0.5rem;"></div>
+</article>
+{% endif %}
+
+
+
 {% if session.get('role') == 'admin' %}
 <article>
     <header><strong>💾 Backup</strong></header>
