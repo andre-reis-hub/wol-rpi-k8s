@@ -29,6 +29,34 @@ REGISTER_TOKEN = os.environ.get('REGISTER_TOKEN', '')
 PC_SSH_USER = os.environ.get('PC_SSH_USER', 'andre-reis')
 
 PUBLIC_HOST = os.environ.get('PUBLIC_HOST', PC_LOCAL_IP)
+# Se AUTO_PUBLIC_IP=true, descobre o IP publico real automaticamente
+AUTO_PUBLIC_IP = os.environ.get('AUTO_PUBLIC_IP', 'true').lower() == 'true'
+_public_ip_cache = {'ip': None, 'ts': 0}
+PUBLIC_IP_TTL = 300  # segundos (5 min) - evita consultar toda hora
+
+
+def get_public_host():
+    """Retorna o IP publico real. Descobre via servico externo (com cache de
+    5 min) se AUTO_PUBLIC_IP=true; senao usa PUBLIC_HOST do .env."""
+    import time as _t
+    if not AUTO_PUBLIC_IP:
+        return PUBLIC_HOST
+    agora = _t.time()
+    if _public_ip_cache['ip'] and (agora - _public_ip_cache['ts']) < PUBLIC_IP_TTL:
+        return _public_ip_cache['ip']
+    for url in ('https://api.ipify.org', 'https://ifconfig.me/ip', 'https://icanhazip.com'):
+        try:
+            r = requests.get(url, timeout=3)
+            if r.status_code == 200:
+                ip = r.text.strip()
+                if ip:
+                    _public_ip_cache['ip'] = ip
+                    _public_ip_cache['ts'] = agora
+                    return ip
+        except Exception:
+            continue
+    # fallback: cache antigo ou PUBLIC_HOST
+    return _public_ip_cache['ip'] or PUBLIC_HOST
 
 K8S_API = os.environ.get('K8S_API', 'https://192.168.15.14:6443')
 K8S_TOKEN = os.environ.get('K8S_TOKEN', '')
@@ -66,6 +94,7 @@ GAMES = {
         'namespace': 'abiotic-factor',
         'deployment': 'abiotic-factor-server',
         'porta_conexao': 7777,
+        'so_ip': True,  # porta padrao (7777) -> no jogo basta o IP, copia so o IP
         'fonte_players': 'loki',
         'log_join': 'entered the facility',
         'log_leave': 'exited the facility',
@@ -376,7 +405,11 @@ def game_fragment(game):
     players, fonte_ok = get_players(game, ligado) if online else ([], True)
     metrics = get_palworld_metrics() if (online and ligado and g['fonte_players'] == 'rest') else None
     chat = get_loki_chat(game)  # sempre, mesmo desligado (mostra historico)
-    endereco = f"{PUBLIC_HOST}:{g['porta_conexao']}"
+    host = get_public_host()
+    if g.get('so_ip'):
+        endereco = host  # porta padrao: no jogo basta o IP
+    else:
+        endereco = f"{host}:{g['porta_conexao']}"
     is_admin = session.get('role') == 'admin'
     return render_template(
         '_game.html',
