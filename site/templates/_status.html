@@ -56,6 +56,12 @@
     </div>
 </details>
 
+{% elif shutting_down %}
+
+<p><strong class="status-waking">⏻ Desligando...</strong></p>
+<p><small>Comando enviado. O PC pode levar 1–2 min para desligar completamente.
+Aguarde antes de ligar novamente.</small></p>
+
 {% elif waking %}
 
 <p><strong class="status-waking">⏳ Ligando...</strong></p>

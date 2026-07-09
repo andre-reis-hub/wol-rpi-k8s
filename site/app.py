@@ -71,6 +71,7 @@ LOKI_WINDOW_HOURS = int(os.environ.get('LOKI_WINDOW_HOURS', '12'))
 CHAT_LIMIT = int(os.environ.get('CHAT_LIMIT', '10'))
 
 WAKING_TIMEOUT = 300
+SHUTDOWN_TIMEOUT = 90
 STATE_FILE = os.path.join(os.path.dirname(__file__), 'state.json')
 
 GAMES = {
@@ -123,8 +124,8 @@ def load_state():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE) as f:
             return json.load(f)
-    return {'ip': None, 'services': [], 'last_seen': None, 'waking': False, 'waking_since': None}
-
+    return {'ip': None, 'services': [], 'last_seen': None, 'waking': False, 'waking_since': None,
+            'shutting_down': False, 'shutting_down_since': None}
 
 def save_state(state):
     with open(STATE_FILE, 'w') as f:
@@ -137,6 +138,11 @@ def is_waking(state):
     elapsed = (datetime.utcnow() - datetime.fromisoformat(state['waking_since'])).total_seconds()
     return elapsed < WAKING_TIMEOUT
 
+def is_shutting_down(state):
+    if not state.get('shutting_down') or not state.get('shutting_down_since'):
+        return False
+    elapsed = (datetime.utcnow() - datetime.fromisoformat(state['shutting_down_since'])).total_seconds()
+    return elapsed < SHUTDOWN_TIMEOUT
 
 def pc_online():
     result = subprocess.run(['ping', '-c', '1', '-W', '1', PC_LOCAL_IP], capture_output=True)
@@ -388,9 +394,14 @@ def dashboard():
 def status_fragment():
     online = pc_online()
     state = load_state()
-    waking = not online and is_waking(state)
+    shutting_down = is_shutting_down(state)
+    # Durante a janela de shutdown, mostra "desligando" mesmo se o ping responder
+    waking = not online and not shutting_down and is_waking(state)
+    if shutting_down:
+        online = False  # nao mostra "online" enquanto desliga
     is_admin = session.get('role') == 'admin'
-    return render_template('_status.html', online=online, waking=waking, state=state, is_admin=is_admin)
+    return render_template('_status.html', online=online, waking=waking,
+                           shutting_down=shutting_down, state=state, is_admin=is_admin)
 
 
 @app.route('/game-fragment/<game>')
@@ -438,17 +449,6 @@ def game_stop(game):
     return game_fragment(game)
 
 
-@app.route('/wol', methods=['POST'])
-@login_required
-def wol():
-    wakeonlan.send_magic_packet(PC_MAC)
-    state = load_state()
-    state['waking'] = True
-    state['waking_since'] = datetime.utcnow().isoformat()
-    save_state(state)
-    return ''
-
-
 @app.route('/shutdown', methods=['POST'])
 @login_required
 @admin_required
@@ -459,7 +459,16 @@ def shutdown():
              f'{PC_SSH_USER}@{PC_LOCAL_IP}', 'sudo shutdown now'],
             capture_output=True, text=True, timeout=10)
         if result.returncode == 0:
-            return '<p><strong class="status-waking">⏻ Comando de desligamento enviado.</strong></p>'
+            # Marca o estado "desligando" para o painel mostrar corretamente
+            state = load_state()
+            state['shutting_down'] = True
+            state['shutting_down_since'] = datetime.utcnow().isoformat()
+            state['waking'] = False
+            state['waking_since'] = None
+            save_state(state)
+            return render_template('_status.html', online=False, waking=False,
+                                   shutting_down=True, state=state,
+                                   is_admin=session.get('role') == 'admin')
         return f'<p><strong class="status-offline">Erro ao desligar: {result.stderr[:100]}</strong></p>'
     except Exception as e:
         return f'<p><strong class="status-offline">Erro: {str(e)[:100]}</strong></p>'
