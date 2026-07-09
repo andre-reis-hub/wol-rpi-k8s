@@ -449,6 +449,17 @@ def game_stop(game):
     return game_fragment(game)
 
 
+@app.route('/wol', methods=['POST'])
+@login_required
+def wol():
+    wakeonlan.send_magic_packet(PC_MAC)
+    state = load_state()
+    state['waking'] = True
+    state['waking_since'] = datetime.utcnow().isoformat()
+    save_state(state)
+    return ''
+
+
 @app.route('/shutdown', methods=['POST'])
 @login_required
 @admin_required
