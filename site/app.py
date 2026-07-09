@@ -456,6 +456,8 @@ def wol():
     state = load_state()
     state['waking'] = True
     state['waking_since'] = datetime.utcnow().isoformat()
+    state['shutting_down'] = False
+    state['shutting_down_since'] = None
     save_state(state)
     return ''
 
