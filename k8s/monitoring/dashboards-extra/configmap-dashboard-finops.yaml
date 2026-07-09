@@ -16,7 +16,7 @@ data:
           "type": "stat",
           "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
           "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
-          "targets": [{ "expr": "(150 * 0.95 / 1000) * 720", "refId": "A" }],
+          "targets": [{ "expr": "(350 * 0.95 / 1000) * 720", "refId": "A" }],
           "fieldConfig": { "defaults": { "unit": "currencyBRL", "decimals": 2,
             "color": { "mode": "fixed", "fixedColor": "red" } } },
           "options": { "colorMode": "background", "graphMode": "none" }
@@ -27,7 +27,7 @@ data:
           "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
           "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
           "targets": [{
-            "expr": "(sum_over_time(up{job=\"node-exporter\"}[30d]) / 60) * (150 * 0.95 / 1000)",
+            "expr": "(sum_over_time(up{job=\"node-exporter\"}[30d]) / 60) * (350 * 0.95 / 1000)",
             "refId": "A" }],
           "fieldConfig": { "defaults": { "unit": "currencyBRL", "decimals": 2,
             "color": { "mode": "fixed", "fixedColor": "green" } } },
@@ -39,7 +39,7 @@ data:
           "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
           "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
           "targets": [{
-            "expr": "((150 * 0.95 / 1000) * 720) - ((sum_over_time(up{job=\"node-exporter\"}[30d]) / 60) * (150 * 0.95 / 1000))",
+            "expr": "((350 * 0.95 / 1000) * 720) - ((sum_over_time(up{job=\"node-exporter\"}[30d]) / 60) * (350 * 0.95 / 1000))",
             "refId": "A" }],
           "fieldConfig": { "defaults": { "unit": "currencyBRL", "decimals": 2,
             "color": { "mode": "fixed", "fixedColor": "blue" } } },
@@ -60,8 +60,8 @@ data:
           "gridPos": { "h": 6, "w": 12, "x": 0, "y": 5 },
           "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
           "targets": [
-            { "expr": "(150 * 0.95 / 1000) * 720", "legendFormat": "Se 24/7", "refId": "A" },
-            { "expr": "(sum_over_time(up{job=\"node-exporter\"}[30d]) / 60) * (150 * 0.95 / 1000)", "legendFormat": "Real (30d)", "refId": "B" }
+            { "expr": "(350 * 0.95 / 1000) * 720", "legendFormat": "Se 24/7", "refId": "A" },
+            { "expr": "(sum_over_time(up{job=\"node-exporter\"}[30d]) / 60) * (350 * 0.95 / 1000)", "legendFormat": "Real (30d)", "refId": "B" }
           ],
           "fieldConfig": { "defaults": { "unit": "currencyBRL", "decimals": 2 } },
           "options": { "orientation": "horizontal", "displayMode": "gradient" }
