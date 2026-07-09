@@ -4,18 +4,15 @@
     <h2>Painel de Controle</h2>
 </hgroup>
 
-{# ---- Status do PC (recolhivel, comeca FECHADO para nao poluir) ---- #}
+{# ---- Status do PC: status + botao SEMPRE visiveis; detalhes recolhiveis ---- #}
 <article>
-    <details>
-        <summary style="cursor: pointer; font-weight: bold;">🖥️ Status do PC</summary>
-        <div id="status-box"
-             hx-get="/status-fragment"
-             hx-trigger="load, every 15s"
-             hx-swap="innerHTML"
-             style="margin-top: 0.75rem;">
-            <p aria-busy="true">Verificando...</p>
-        </div>
-    </details>
+    <header><strong>🖥️ Status do PC</strong></header>
+    <div id="status-box"
+         hx-get="/status-fragment"
+         hx-trigger="load, every 15s"
+         hx-swap="innerHTML">
+        <p aria-busy="true">Verificando...</p>
+    </div>
 </article>
 
 {# ---- Cards dos jogos ---- #}
@@ -46,7 +43,7 @@
                 width="100%" height="200" frameborder="0" loading="lazy"
                 style="border-radius: 8px; margin-bottom: 1rem;"></iframe>
             <iframe
-                src="{{ grafana_base }}/d-solo/finops-homelab/finops?orgId=1&panelId=4&theme=dark&refresh=30s"
+                src="{{ grafana_base }}/d-solo/finops-homelab/finops?orgId=1&panelId=5&theme=dark&refresh=30s"
                 width="100%" height="250" frameborder="0" loading="lazy"
                 style="border-radius: 8px; margin-bottom: 1rem;"></iframe>
 
