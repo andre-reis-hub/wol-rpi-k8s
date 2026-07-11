@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-recursos
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  recursos.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "panels": [
+        {
+          "title": "🖥️ CPU do i9 (uso %)",
+          "type": "gauge",
+          "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [{
+            "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+            "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100,
+            "thresholds": { "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 } ] } } }
+        },
+        {
+          "title": "🧠 RAM do i9 (uso %)",
+          "type": "gauge",
+          "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [{
+            "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+            "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100,
+            "thresholds": { "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 75 },
+              { "color": "red", "value": 90 } ] } } }
+        },
+        {
+          "title": "🧠 RAM total usada / disponível (i9)",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [
+            { "expr": "(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes)", "legendFormat": "Usada", "refId": "A" },
+            { "expr": "node_memory_MemTotal_bytes", "legendFormat": "Total", "refId": "B" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "bytes" } },
+          "options": { "colorMode": "value", "graphMode": "area" }
+        },
+        {
+          "title": "🎮 RAM por jogo (histórico)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [{
+            "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"palworld|abiotic-factor|valheim\", container!=\"\"})",
+            "legendFormat": "{{namespace}}", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 15, "showPoints": "never" } } }
+        },
+        {
+          "title": "⚙️ CPU por jogo (cores, histórico)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [{
+            "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"palworld|abiotic-factor|valheim\", container!=\"\"}[5m]))",
+            "legendFormat": "{{namespace}}", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 15, "showPoints": "never" } } }
+        },
+        {
+          "title": "📊 RAM atual por jogo",
+          "type": "bargauge",
+          "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [{
+            "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"palworld|abiotic-factor|valheim\", container!=\"\"})",
+            "legendFormat": "{{namespace}}", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "bytes" } },
+          "options": { "orientation": "horizontal", "displayMode": "gradient" }
+        },
+        {
+          "title": "🔌 Servidores ligados agora",
+          "type": "stat",
+          "gridPos": { "h": 7, "w": 12, "x": 12, "y": 14 },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+          "targets": [{
+            "expr": "count(count by (namespace) (container_memory_working_set_bytes{namespace=~\"palworld|abiotic-factor|valheim\", container!=\"\"}))",
+            "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "none", "color": { "mode": "fixed", "fixedColor": "green" } } },
+          "options": { "colorMode": "background", "graphMode": "none" }
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["wol-rpi-k8s", "recursos"],
+      "templating": { "list": [
+        { "name": "DS_PROM", "type": "datasource", "query": "prometheus", "current": {} }
+      ]},
+      "time": { "from": "now-6h", "to": "now" },
+      "title": "Recursos — CPU e RAM (jogos + i9)",
+      "uid": "recursos-homelab",
+      "version": 1
+    }
