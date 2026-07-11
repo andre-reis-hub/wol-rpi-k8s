@@ -61,7 +61,27 @@
                 <a href="{{ grafana_base }}/d/finops-homelab" target="_blank" rel="noopener">
                     Ver dashboard FinOps completo →</a>
             </p>
-            <p>
+            <h4>🖥️ Recursos — CPU & RAM</h4>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <iframe
+                    src="{{ grafana_base }}/d-solo/recursos-homelab/recursos?orgId=1&from=now-6h&to=now&var-DS_PROM=prometheus&panelId=panel-1&theme=dark&refresh=30s"
+                    width="49%" height="180" frameborder="0" loading="lazy"
+                    style="border-radius: 8px; min-width: 150px; flex: 1;"></iframe>
+                <iframe
+                    src="{{ grafana_base }}/d-solo/recursos-homelab/recursos?orgId=1&from=now-6h&to=now&var-DS_PROM=prometheus&panelId=panel-2&theme=dark&refresh=30s"
+                    width="49%" height="180" frameborder="0" loading="lazy"
+                    style="border-radius: 8px; min-width: 150px; flex: 1;"></iframe>
+            </div>
+            <iframe
+                src="{{ grafana_base }}/d-solo/recursos-homelab/recursos?orgId=1&from=now-6h&to=now&var-DS_PROM=prometheus&panelId=panel-6&theme=dark&refresh=30s"
+                width="100%" height="220" frameborder="0" loading="lazy"
+                style="border-radius: 8px; margin-top: 0.75rem; margin-bottom: 1rem;"></iframe>
+            <iframe
+                src="{{ grafana_base }}/d-solo/recursos-homelab/recursos?orgId=1&from=now-6h&to=now&var-DS_PROM=prometheus&panelId=panel-5&theme=dark&refresh=30s"
+                width="100%" height="220" frameborder="0" loading="lazy"
+                style="border-radius: 8px; margin-bottom: 1rem;"></iframe>
+
+            <p style="margin-top: 0.5rem;">
                 <a href="{{ grafana_base }}/d/gamer-stats" target="_blank" rel="noopener">
                     Ver dashboard Gamer completo →</a>
             </p>
