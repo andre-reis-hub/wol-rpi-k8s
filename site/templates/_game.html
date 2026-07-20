@@ -4,6 +4,19 @@
 {% elif ligado %}
 <p><strong class="status-online">● Servidor Online</strong></p>
 
+{% if is_admin and game == 'palworld' %}
+<form hx-post="/game/palworld/announce"
+      hx-target="#announce-result"
+      hx-swap="innerHTML"
+      hx-on::after-request="this.reset()"
+      style="margin-top: 0.75rem; display: flex; gap: 0.4rem;">
+    <input type="text" name="mensagem" placeholder="Mensagem para o servidor..."
+           maxlength="120" required style="margin: 0; flex: 1;">
+    <button type="submit" style="margin: 0; white-space: nowrap;">📢 Enviar</button>
+</form>
+<div id="announce-result"></div>
+{% endif %}
+
 {% if metrics %}
 <p>
     <strong>{{ metrics.currentplayernum }}/{{ metrics.maxplayernum }}</strong> jogadores

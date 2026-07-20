@@ -753,5 +753,42 @@ def restore_game(game, snapshot):
                 'Ligue o servidor quando concluir.</small></p>'
                 '<div hx-get="/backup/status" hx-trigger="load, every 10s" hx-swap="innerHTML"></div>')
     return '<p><strong class="status-offline">Erro ao restaurar.</strong></p>'
+
+# ---- Enviar mensagem (broadcast) no Palworld via REST API ----
+@app.route('/game/palworld/announce', methods=['POST'])
+@login_required
+@admin_required
+def palworld_announce():
+    msg = (request.form.get('mensagem') or '').strip()
+    if not msg:
+        return '<p><small class="status-offline">Digite uma mensagem.</small></p>'
+    if not PALWORLD_API_URL:
+        return '<p><small class="status-offline">API do Palworld indisponível.</small></p>'
+    try:
+        resp = requests.post(
+            f'{PALWORLD_API_URL}/v1/api/announce',
+            json={'message': msg},
+            auth=(PALWORLD_API_USER, PALWORLD_API_PASS), timeout=4)
+        if resp.status_code in (200, 204):
+            return f'<p><small class="status-online">✅ Enviado: {msg}</small></p>'
+        return f'<p><small class="status-offline">Erro {resp.status_code} ao enviar.</small></p>'
+    except Exception as e:
+        return f'<p><small class="status-offline">Erro: {str(e)[:80]}</small></p>'
+
+
+# ---- Outros comandos RCON/API do Palworld (referencia p/ depois) ----
+# A REST API do Palworld tambem oferece (POST, mesma auth):
+#   /v1/api/save                        -> salva o mundo
+#   /v1/api/shutdown  {"waittime":30,"message":"..."} -> desliga com aviso
+#   /v1/api/kick      {"userid":"...","message":"..."} -> expulsa jogador
+#   /v1/api/ban       {"userid":"...","message":"..."} -> bane jogador
+# Exemplo:
+# @app.route('/game/palworld/save', methods=['POST'])
+# @login_required
+# @admin_required
+# def palworld_save():
+#     requests.post(f'{PALWORLD_API_URL}/v1/api/save',
+#                   auth=(PALWORLD_API_USER, PALWORLD_API_PASS), timeout=4)
+#     return '<p><small>Mundo salvo.</small></p>'
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, threaded=True)
