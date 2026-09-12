@@ -1,0 +1,14 @@
+[Unit]
+Description=WOL Panel (Flask)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=andre
+WorkingDirectory=/home/andre/wol-rpi-k8s/site
+ExecStart=/home/andre/wol-rpi-k8s/site/venv/bin/python app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
