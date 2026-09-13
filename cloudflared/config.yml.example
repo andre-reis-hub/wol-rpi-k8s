@@ -1,9 +1,15 @@
+# Exemplo do config.yml do tunnel local. Copiar para ~/.cloudflared/config.yml
+# e preencher o <TUNNEL-UUID> (gerado por: cloudflared tunnel create wol-panel).
+# NAO commitar o config.yml real nem o <UUID>.json de credenciais.
+
 tunnel: <TUNNEL-UUID>
 credentials-file: /home/andre/.cloudflared/<TUNNEL-UUID>.json
 
 ingress:
   - hostname: panel.areis-solution.com
     service: http://localhost:5000
+  - hostname: grafana.areis-solution.com
+    service: http://192.168.15.14:32593
   - hostname: argocd.areis-solution.com
     service: https://192.168.15.14:30956
     originRequest:

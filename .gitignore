@@ -6,3 +6,7 @@ venv/
 *.egg-info/
 site/k8s-ca.crt
 site/.env
+site/.env
+.cloudflared/
+cloudflared/*.json
+cloudflared/config.yml
