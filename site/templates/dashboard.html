@@ -91,6 +91,12 @@
 
 {# ---- Links uteis (Grafana / ArgoCD) ---- #}
 <article>
+  <header>📊 Coletor de métricas</header>
+  <div hx-get="/exporter-fragment" hx-trigger="load, every 15s" hx-swap="innerHTML">
+    <p><small>Carregando…</small></p>
+  </div>
+</article>
+<article>
     <header><strong>🔗 Ferramentas</strong></header>
     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
         <a href="{{ grafana_base }}" target="_blank" rel="noopener" role="button" class="outline">

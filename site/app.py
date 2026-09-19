@@ -792,3 +792,59 @@ def palworld_announce():
 #     return '<p><small>Mundo salvo.</small></p>'
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, threaded=True)
+
+
+# =====================================================================
+# CONTROLE DO GAME-EXPORTER (métricas de jogadores pro Prometheus/vigia)
+# =====================================================================
+EXPORTER_NS = os.environ.get('EXPORTER_NS', 'monitoring')
+EXPORTER_DEPLOY = os.environ.get('EXPORTER_DEPLOY', 'game-exporter')
+
+
+def _scale_deploy(ns, deploy, replicas):
+    """Escala qualquer deployment (reusa a mecânica do scale_game)."""
+    try:
+        url = f"{K8S_API}/apis/apps/v1/namespaces/{ns}/deployments/{deploy}/scale"
+        headers = _k8s_headers()
+        headers['Content-Type'] = 'application/merge-patch+json'
+        body = json.dumps({'spec': {'replicas': replicas}})
+        r = requests.patch(url, headers=headers, data=body, verify=_k8s_verify(), timeout=6)
+        return r.status_code in (200, 201)
+    except Exception:
+        return False
+
+
+def _deploy_replicas(ns, deploy):
+    try:
+        url = f"{K8S_API}/apis/apps/v1/namespaces/{ns}/deployments/{deploy}"
+        r = requests.get(url, headers=_k8s_headers(), verify=_k8s_verify(), timeout=4)
+        if r.status_code == 200:
+            return r.json().get('spec', {}).get('replicas', 0)
+    except Exception:
+        pass
+    return None
+
+
+@app.route('/exporter-fragment')
+@login_required
+def exporter_fragment():
+    rep = _deploy_replicas(EXPORTER_NS, EXPORTER_DEPLOY)
+    ligado = bool(rep) if rep is not None else None
+    is_admin = session.get('role') == 'admin'
+    return render_template('_exporter.html', ligado=ligado, is_admin=is_admin)
+
+
+@app.route('/exporter/start', methods=['POST'])
+@login_required
+@admin_required
+def exporter_start():
+    _scale_deploy(EXPORTER_NS, EXPORTER_DEPLOY, 1)
+    return exporter_fragment()
+
+
+@app.route('/exporter/stop', methods=['POST'])
+@login_required
+@admin_required
+def exporter_stop():
+    _scale_deploy(EXPORTER_NS, EXPORTER_DEPLOY, 0)
+    return exporter_fragment()
