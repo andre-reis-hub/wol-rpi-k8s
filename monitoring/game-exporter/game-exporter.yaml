@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: game-exporter, namespace: monitoring }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: { name: game-exporter-read }
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: game-exporter-read }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: game-exporter-read }
+subjects:
+  - { kind: ServiceAccount, name: game-exporter, namespace: monitoring }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: game-exporter, namespace: monitoring, labels: { app: game-exporter } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: game-exporter } }
+  template:
+    metadata: { labels: { app: game-exporter } }
+    spec:
+      serviceAccountName: game-exporter
+      containers:
+        - name: exporter
+          image: python:3.12-slim
+          command: ["/bin/sh", "-c"]
+          args:
+            - "pip install --no-cache-dir requests prometheus_client urllib3 >/dev/null && python -u /app/exporter.py"
+          env:
+            - { name: LOKI_URL, value: "http://loki.monitoring.svc:3100" }
+            - { name: SCRAPE_INTERVAL, value: "30" }
+            - { name: PALWORLD_API_URL, value: "" }
+            - { name: PALWORLD_API_USER, value: "admin" }
+            - { name: PALWORLD_API_PASS, value: "" }
+          ports: [ { name: metrics, containerPort: 9109 } ]
+          volumeMounts: [ { name: code, mountPath: /app } ]
+      volumes:
+        - { name: code, configMap: { name: game-exporter-code } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: game-exporter, namespace: monitoring, labels: { app: game-exporter } }
+spec:
+  selector: { app: game-exporter }
+  ports: [ { name: metrics, port: 9109, targetPort: 9109 } ]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: game-exporter
+  namespace: monitoring
+  labels: { release: monitoring }
+spec:
+  selector: { matchLabels: { app: game-exporter } }
+  endpoints: [ { port: metrics, interval: 30s } ]
