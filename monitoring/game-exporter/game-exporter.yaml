@@ -36,9 +36,13 @@ spec:
           env:
             - { name: LOKI_URL, value: "http://loki.monitoring.svc:3100" }
             - { name: SCRAPE_INTERVAL, value: "30" }
-            - { name: PALWORLD_API_URL, value: "" }
+            - { name: PALWORLD_API_URL, value: "http://palworld-service.palworld.svc:8212" }
             - { name: PALWORLD_API_USER, value: "admin" }
-            - { name: PALWORLD_API_PASS, value: "" }
+            - name: PALWORLD_API_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: palworld-secrets
+                  key: admin-password
           ports: [ { name: metrics, containerPort: 9109 } ]
           volumeMounts: [ { name: code, mountPath: /app } ]
       volumes:
