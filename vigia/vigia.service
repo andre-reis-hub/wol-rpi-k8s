@@ -1,0 +1,7 @@
+[Unit]
+Description=Vigia de ócio (dry-run) — avalia se o i9 deve desligar
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/andre-reis/Documents/wol-rpi-k8s/vigia/vigia.sh

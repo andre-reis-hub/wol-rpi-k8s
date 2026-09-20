@@ -1,0 +1,10 @@
+[Unit]
+Description=Roda o vigia de ócio a cada 2 minutos
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+Unit=vigia.service
+
+[Install]
+WantedBy=timers.target
