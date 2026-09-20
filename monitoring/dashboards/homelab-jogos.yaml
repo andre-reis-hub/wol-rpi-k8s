@@ -23,7 +23,7 @@ data:
           "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
           "datasource": { "type": "prometheus", "uid": "$datasource" },
           "targets": [
-            { "expr": "sum(game_players_online)", "refId": "A" }
+            { "expr": "sum(game_players_online)", "instant": true, "refId": "A" }
           ],
           "fieldConfig": {
             "defaults": {
@@ -37,7 +37,7 @@ data:
               "unit": "short"
             }
           },
-          "options": { "colorMode": "background", "graphMode": "area", "textMode": "value" }
+          "options": { "colorMode": "background", "graphMode": "none", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
         },
         {
           "id": 2,
@@ -46,7 +46,7 @@ data:
           "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
           "datasource": { "type": "prometheus", "uid": "$datasource" },
           "targets": [
-            { "expr": "sum(game_server_up)", "refId": "A" }
+            { "expr": "sum(game_server_up)", "instant": true, "refId": "A" }
           ],
           "fieldConfig": {
             "defaults": {
@@ -61,7 +61,7 @@ data:
               "unit": "short"
             }
           },
-          "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" }
+          "options": { "colorMode": "background", "graphMode": "none", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
         },
         {
           "id": 3,
@@ -70,7 +70,7 @@ data:
           "gridPos": { "h": 5, "w": 12, "x": 12, "y": 0 },
           "datasource": { "type": "prometheus", "uid": "$datasource" },
           "targets": [
-            { "expr": "game_detection_ok", "legendFormat": "{{game}}", "refId": "A" }
+            { "expr": "last_over_time(game_detection_ok[5m])", "legendFormat": "{{game}}", "instant": true, "refId": "A" }
           ],
           "fieldConfig": {
             "defaults": {
@@ -86,7 +86,7 @@ data:
               ]
             }
           },
-          "options": { "colorMode": "background", "graphMode": "none", "textMode": "value_and_name" }
+          "options": { "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } }
         },
         {
           "id": 4,
@@ -95,7 +95,7 @@ data:
           "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
           "datasource": { "type": "prometheus", "uid": "$datasource" },
           "targets": [
-            { "expr": "game_players_online", "legendFormat": "{{game}}", "refId": "A" }
+            { "expr": "max by (game) (game_players_online)", "legendFormat": "{{game}}", "refId": "A" }
           ],
           "fieldConfig": {
             "defaults": {
@@ -112,7 +112,7 @@ data:
           "gridPos": { "h": 9, "w": 12, "x": 12, "y": 5 },
           "datasource": { "type": "prometheus", "uid": "$datasource" },
           "targets": [
-            { "expr": "game_server_up", "legendFormat": "{{game}}", "refId": "A" }
+            { "expr": "max by (game) (game_server_up)", "legendFormat": "{{game}}", "refId": "A" }
           ],
           "fieldConfig": {
             "defaults": {
