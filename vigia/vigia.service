@@ -4,4 +4,5 @@ After=network-online.target
 
 [Service]
 Type=oneshot
+Environment="HOME=/home/andre-reis"
 ExecStart=/home/andre-reis/Documents/wol-rpi-k8s/vigia/vigia.sh
