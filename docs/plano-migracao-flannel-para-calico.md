@@ -1,3 +1,5 @@
+> **SUPERADO — esta migração falhou em cluster de um node só. Ver registro-tentativa-migracao-flannel-calico.md.**
+
 # Plano — migração Flannel → Calico v3.33.0 (node único)
 
 > **Status: PLANO, ainda não executado.** Escrito em 2026-10-09, logo depois do
