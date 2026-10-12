@@ -24,6 +24,12 @@ data:
       restic -r "$REPO" init
     fi
 
+    # Remove lock orfao de um backup anterior que possa ter morrido no meio
+    # (ex: i9 reiniciou durante o backup). Sem isso, a retencao abaixo falha
+    # com "repository is already locked". O || true ignora se nao houver lock.
+    echo "[backup] Limpando locks orfaos (se houver)..."
+    restic -r "$REPO" unlock || true
+
     # Backup dos saves dos jogos
     echo "[backup] Rodando restic backup..."
     restic -r "$REPO" backup \
