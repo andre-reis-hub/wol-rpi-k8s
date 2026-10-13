@@ -14,15 +14,6 @@ spec:
     metadata:
       labels:
         app: enshrouded-server
-      annotations:
-        vault.hashicorp.com/agent-inject: "true"
-        vault.hashicorp.com/role: "enshrouded"
-        vault.hashicorp.com/agent-inject-secret-server-password: "wol/data/enshrouded"
-        vault.hashicorp.com/agent-inject-template-server-password: |
-          {{- with secret "wol/data/enshrouded" -}}
-          {{ index .Data.data "server-password" }}
-          {{- end -}}
-        vault.hashicorp.com/agent-pre-populate-only: "true"
     spec:
       serviceAccountName: enshrouded-sa
       containers:
@@ -31,21 +22,24 @@ spec:
           env:
             - name: SERVER_NAME
               value: "Servidor do Andre - Enshrouded"
+            - name: SERVER_SLOT_COUNT
+              value: "16"
+            - name: SERVER_QUERYPORT
+              value: "15637"
             - name: GAME_PORT
               value: "15636"
-            - name: QUERY_PORT
-              value: "15637"
-            - name: SERVER_SLOTS
-              value: "16"
+            - name: UPDATE_CRON
+              value: "*/30 * * * *"
+            - name: UPDATE_CHECK_PLAYERS
+              value: "true"
+            - name: BACKUP_CRON
+              value: "*/15 * * * *"
+            - name: BACKUP_MAX_COUNT
+              value: "12"
             - name: PUID
               value: "1000"
             - name: PGID
               value: "1000"
-          command: ["/bin/bash", "-c"]
-          args:
-            - |
-              export SERVER_PASSWORD="$(cat /vault/secrets/server-password)"
-              exec /entrypoint.sh
           ports:
             - containerPort: 15636
               protocol: UDP
@@ -60,7 +54,7 @@ spec:
               cpu: "6000m"
           volumeMounts:
             - name: enshrouded-data
-              mountPath: /home/steam/enshrouded
+              mountPath: /opt/enshrouded
       volumes:
         - name: enshrouded-data
           persistentVolumeClaim:
