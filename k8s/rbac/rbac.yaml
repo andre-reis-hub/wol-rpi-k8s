@@ -134,3 +134,30 @@ roleRef:
   kind: Role
   name: backup-trigger
   apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: game-scaler
+  namespace: enshrouded
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: panel-game-scaler
+  namespace: enshrouded
+subjects:
+  - kind: ServiceAccount
+    name: panel-controller
+    namespace: kube-system
+roleRef:
+  kind: Role
+  name: game-scaler
+  apiGroup: rbac.authorization.k8s.io
