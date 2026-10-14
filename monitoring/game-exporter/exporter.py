@@ -39,6 +39,10 @@ GAMES = {
         'namespace': 'valheim', 'deployment': 'valheim-server',
         'fonte_players': 'loki_valheim',
     },
+    'enshrouded': {
+        'namespace': 'enshrouded', 'deployment': 'enshrouded-server',
+        'fonte_players': 'log_remote',
+    },
 }
 
 def _read_token():
@@ -147,6 +151,28 @@ def valheim_players():
             online.pop(c.group(1), None)
     return [n for n in online.values() if n]
 
+def log_remote_players(game):
+    """Enshrouded: le o log recente do pod e extrai o ultimo 'remote N'
+    (numero de clientes). Retorna lista de N placeholders, ou None se
+    nao conseguir ler o log."""
+    g = GAMES[game]
+    ns = g['namespace']
+    try:
+        url_pods = f"{K8S_API}/api/v1/namespaces/{ns}/pods"
+        r = requests.get(url_pods, headers=_headers(), verify=_verify(), timeout=4)
+        if r.status_code != 200 or not r.json().get('items'):
+            return None
+        pod = r.json()['items'][0]['metadata']['name']
+        url_log = f"{K8S_API}/api/v1/namespaces/{ns}/pods/{pod}/log?tailLines=120"
+        rl = requests.get(url_log, headers=_headers(), verify=_verify(), timeout=5)
+        if rl.status_code != 200:
+            return None
+        achados = re.findall(r'remote (\d+)', rl.text)
+        n = int(achados[-1]) if achados else 0
+        return [f'player{i+1}' for i in range(n)]
+    except Exception:
+        return None
+
 def players_for(game):
     """Retorna (qtd, ok). ok=False = detecção falhou (NÃO confiar no zero)."""
     g = GAMES[game]
@@ -154,6 +180,8 @@ def players_for(game):
         p = palworld_players()
     elif g['fonte_players'] == 'loki_valheim':
         p = valheim_players()
+    elif g['fonte_players'] == 'log_remote':
+        p = log_remote_players(game)
     else:
         p = loki_players(game)
     if p is None:
