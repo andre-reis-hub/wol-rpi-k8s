@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: enshrouded
+  namespace: argocd
+spec:
+  destination:
+    namespace: enshrouded
+    server: https://kubernetes.default.svc
+  ignoreDifferences:
+  - group: apps
+    jsonPointers:
+    - /spec/replicas
+    kind: Deployment
+  project: default
+  source:
+    path: k8s/games/enshrouded
+    repoURL: https://github.com/andre-reis-hub/wol-rpi-k8s.git
+  syncPolicy:
+    automated: {}
