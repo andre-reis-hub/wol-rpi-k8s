@@ -120,7 +120,7 @@ GAMES = {
         'namespace': 'enshrouded',
         'deployment': 'enshrouded-server',
         'porta_conexao': 15637,
-        'fonte_players': None,  # online via Loki fica pendente do log real (ver com gente conectada)
+        'fonte_players': 'log_remote',
         'chat_filtro': None,
         'chat_regex': None,
     },
@@ -298,11 +298,39 @@ def get_players(game, ligado):
         if nomes is None:
             return [], False
         return nomes, True
+    elif g['fonte_players'] == 'log_remote':
+        n = get_log_remote_players(game)
+        if n is None:
+            return [], False
+        return [f'Jogador {i+1}' for i in range(n)], True
     else:
         nomes = get_loki_players(game)
         if nomes is None:
             return [], False
         return nomes, True
+
+def get_log_remote_players(game):
+    """Enshrouded: o servidor loga a cada ~30s uma linha de sessao
+    'm#0(128): ... remote N (0), limit 256 ...' onde 'remote N' e o numero
+    de clientes conectados. Le o log recente do pod e retorna o ultimo N
+    (None se nao conseguir ler, 0 se ninguem online)."""
+    g = GAMES[game]
+    ns = g['namespace']
+    try:
+        url_pods = f"{K8S_API}/api/v1/namespaces/{ns}/pods"
+        r = requests.get(url_pods, headers=_k8s_headers(), verify=_k8s_verify(), timeout=5)
+        if r.status_code != 200 or not r.json().get('items'):
+            return None
+        pod = r.json()['items'][0]['metadata']['name']
+        url_log = f"{K8S_API}/api/v1/namespaces/{ns}/pods/{pod}/log?tailLines=120"
+        rl = requests.get(url_log, headers=_k8s_headers(), verify=_k8s_verify(), timeout=5)
+        if rl.status_code != 200:
+            return None
+        achados = re.findall(r'remote (\d+)', rl.text)
+        return int(achados[-1]) if achados else 0
+    except Exception:
+        return None
+
 
 def get_valheim_players():
     """Valheim: rastreia sessoes por SteamID.
