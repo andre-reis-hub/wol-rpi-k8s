@@ -289,6 +289,8 @@ def get_players(game, ligado):
     if not ligado:
         return [], True
     g = GAMES[game]
+    if g.get('fonte_players') is None:
+        return [], True
     if g['fonte_players'] == 'rest':
         return get_palworld_players(), True
     elif g['fonte_players'] == 'loki_valheim':
