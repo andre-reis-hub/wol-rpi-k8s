@@ -114,6 +114,16 @@ GAMES = {
         'chat_filtro': None,
         'chat_regex': None,
     },
+    'enshrouded': {
+        'nome': 'Enshrouded',
+        'emoji': '🌫️',
+        'namespace': 'enshrouded',
+        'deployment': 'enshrouded-server',
+        'porta_conexao': 15637,
+        'fonte_players': None,  # online via Loki fica pendente do log real (ver com gente conectada)
+        'chat_filtro': None,
+        'chat_regex': None,
+    },
 }
 
 # Padroes que NAO sao chat de jogador (filtrar para nao poluir)
