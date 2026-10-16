@@ -161,3 +161,28 @@ roleRef:
   kind: Role
   name: game-scaler
   apiGroup: rbac.authorization.k8s.io
+---
+# Painel le o log do pod do Enshrouded (contagem de jogadores online)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: log-reader
+  namespace: enshrouded
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: panel-log-reader
+  namespace: enshrouded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: log-reader
+subjects:
+  - kind: ServiceAccount
+    name: panel-controller
+    namespace: kube-system
