@@ -309,6 +309,16 @@ def get_players(game, ligado):
             return [], False
         return nomes, True
 
+def _enshrouded_conectados(texto):
+    """Conta clientes no ultimo bloco 'Session' do log do Enshrouded.
+    Cada cliente aparece como 'm#N(...)'; m#0 e o proprio servidor."""
+    blocos = texto.split('-------------- Session ----------------')
+    if len(blocos) < 2:
+        return 0
+    ultimo = blocos[-1].split('---------------------------------------')[0]
+    return len([m for m in re.findall(r'm#(\d+)\(', ultimo) if m != '0'])
+
+
 def get_log_remote_players(game):
     """Enshrouded: o servidor loga a cada ~30s uma linha de sessao
     'm#0(128): ... remote N (0), limit 256 ...' onde 'remote N' e o numero
@@ -322,12 +332,11 @@ def get_log_remote_players(game):
         if r.status_code != 200 or not r.json().get('items'):
             return None
         pod = r.json()['items'][0]['metadata']['name']
-        url_log = f"{K8S_API}/api/v1/namespaces/{ns}/pods/{pod}/log?tailLines=120"
+        url_log = f"{K8S_API}/api/v1/namespaces/{ns}/pods/{pod}/log?tailLines=400"
         rl = requests.get(url_log, headers=_k8s_headers(), verify=_k8s_verify(), timeout=5)
         if rl.status_code != 200:
             return None
-        achados = re.findall(r'remote (\d+)', rl.text)
-        return int(achados[-1]) if achados else 0
+        return _enshrouded_conectados(rl.text)
     except Exception:
         return None
 

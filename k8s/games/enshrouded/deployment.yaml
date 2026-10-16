@@ -42,8 +42,6 @@ spec:
               value: "1000"
             - name: STEAMCMD_ARGS
               value: "validate"
-            - name: BOOTSTRAP_HOOK
-              value: "rm -f /opt/enshrouded/steamapps/appmanifest_*.acf"
           ports:
             - containerPort: 15636
               protocol: UDP
