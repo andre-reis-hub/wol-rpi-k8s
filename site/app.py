@@ -302,7 +302,7 @@ def get_players(game, ligado):
         n = get_log_remote_players(game)
         if n is None:
             return [], False
-        return [f'Jogador {i+1}' for i in range(n)], True
+        return _enshrouded_combina(n, _enshrouded_nomes_loki()), True
     else:
         nomes = get_loki_players(game)
         if nomes is None:
@@ -317,6 +317,46 @@ def _enshrouded_conectados(texto):
         return 0
     ultimo = blocos[-1].split('---------------------------------------')[0]
     return len([m for m in re.findall(r'm#(\d+)\(', ultimo) if m != '0'])
+
+
+def _enshrouded_nomes_loki():
+    """Nomes online do Enshrouded pelo Loki.
+    'Player X logged in with' = entrou; 'Remove Player X' = saiu;
+    'Running enshrouded-server' (boot do servidor) zera a lista."""
+    logql = ('{namespace="enshrouded"} |~ '
+             '"logged in with|Remove Player|Running enshrouded-server"')
+    result = _loki_query_range(logql, LOKI_WINDOW_HOURS)
+    if result is None:
+        return None
+    r_in = re.compile(r"Player '(.+?)' logged in with")
+    r_out = re.compile(r"Remove Player '(.+?)'")
+    ev = []
+    for st in result:
+        for ts, line in st.get('values', []):
+            ev.append((int(ts), line))
+    ev.sort(key=lambda e: e[0])
+    online = []
+    for _, line in ev:
+        if 'Running enshrouded-server' in line:
+            online = []
+            continue
+        a = r_in.search(line)
+        b = r_out.search(line)
+        if a:
+            if a.group(1) not in online:
+                online.append(a.group(1))
+        elif b and b.group(1) in online:
+            online.remove(b.group(1))
+    return online
+
+
+def _enshrouded_combina(n, nomes):
+    """A contagem n (log do pod) manda; o Loki so da nome.
+    Faltou nome -> 'Jogador N'. Sobrou nome -> fica com os mais recentes."""
+    if not n:
+        return []
+    nomes = (nomes or [])[-n:]
+    return nomes + [f'Jogador {i+1}' for i in range(len(nomes), n)]
 
 
 def get_log_remote_players(game):
