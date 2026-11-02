@@ -674,6 +674,7 @@ def _criar_job_ops(nome, script_key, env_extra):
                             {"name": "palworld", "mountPath": "/data/palworld"},
                             {"name": "abiotic", "mountPath": "/data/abiotic-factor"},
                             {"name": "valheim", "mountPath": "/data/valheim"},
+                            {"name": "enshrouded", "mountPath": "/data/enshrouded"},
                         ],
                     }],
                     "volumes": [
@@ -681,6 +682,7 @@ def _criar_job_ops(nome, script_key, env_extra):
                         {"name": "palworld", "hostPath": {"path": "/var/lib/rancher/palworld", "type": "DirectoryOrCreate"}},
                         {"name": "abiotic", "hostPath": {"path": "/var/lib/rancher/abiotic-factor", "type": "DirectoryOrCreate"}},
                         {"name": "valheim", "hostPath": {"path": "/var/lib/rancher/valheim", "type": "DirectoryOrCreate"}},
+                        {"name": "enshrouded", "hostPath": {"path": "/var/lib/rancher/enshrouded/server/savegame", "type": "DirectoryOrCreate"}},
                     ],
                 },
             },
