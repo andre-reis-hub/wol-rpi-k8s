@@ -50,6 +50,9 @@ spec:
                 - name: valheim
                   mountPath: /data/valheim
                   readOnly: true
+                - name: enshrouded
+                  mountPath: /data/enshrouded
+                  readOnly: true
           volumes:
             - name: script
               configMap:
@@ -66,4 +69,8 @@ spec:
             - name: valheim
               hostPath:
                 path: /var/lib/rancher/valheim
+                type: DirectoryOrCreate
+            - name: enshrouded
+              hostPath:
+                path: /var/lib/rancher/enshrouded/server/savegame
                 type: DirectoryOrCreate

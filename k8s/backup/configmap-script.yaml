@@ -45,6 +45,7 @@ data:
       /data/palworld \
       /data/abiotic-factor \
       /data/valheim \
+      /data/enshrouded \
       --tag "auto-$(date +%Y%m%d)" \
       --host wol-rpi-k8s
 
