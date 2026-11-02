@@ -18,10 +18,19 @@ data:
 
     REPO="rclone:gdrive:wol-backups"
 
-    # Inicializa o repo restic na primeira vez
-    if ! restic -r "$REPO" snapshots >/dev/null 2>&1; then
-      echo "[backup] Inicializando repositorio restic..."
-      restic -r "$REPO" init
+    # Remove lock orfao ANTES de qualquer acesso ao repo
+    restic -r "$REPO" unlock || true
+
+    # Inicializa o repo SO se ele realmente nao existir; qualquer outro erro aparece no log
+    if ! ERR=$(restic -r "$REPO" cat config 2>&1 >/dev/null); then
+      if echo "$ERR" | grep -qiE 'does not exist|unable to open config file|Is there a repository'; then
+        echo "[backup] Repositorio nao existe, inicializando..."
+        restic -r "$REPO" init
+      else
+        echo "[backup] ERRO ao abrir o repositorio (nao vou tentar init):"
+        echo "$ERR"
+        exit 1
+      fi
     fi
 
     # Remove lock orfao de um backup anterior que possa ter morrido no meio
